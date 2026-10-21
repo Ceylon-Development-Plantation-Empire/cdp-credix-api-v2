@@ -21,9 +21,9 @@ return new class extends Migration
             $table->foreignId('reporting_manager_id')->nullable()->constrained('employees')->nullOnDelete();
 
             // Org and Territory connections
-            $table->foreignId('province_id')->nullable()->constrained('provinces')->nullOnDelete();
-            $table->foreignId('region_id')->nullable()->constrained('regions')->nullOnDelete();
-            $table->foreignId('zonal_id')->nullable()->constrained('zonals')->nullOnDelete();
+            $table->foreignId('province_id')->nullable()->constrained('org_units')->nullOnDelete();
+            $table->foreignId('region_id')->nullable()->constrained('org_units')->nullOnDelete();
+            $table->foreignId('zonal_id')->nullable()->constrained('org_units')->nullOnDelete();
             $table->foreignId('branch_id')->nullable()->constrained('branches')->nullOnDelete();
             $table->foreignId('department_id')->nullable()->constrained('departments')->nullOnDelete();
             $table->foreignId('designation_id')->constrained('designations')->cascadeOnDelete();

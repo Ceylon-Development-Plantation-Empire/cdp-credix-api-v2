@@ -13,6 +13,16 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call(PermissionsSeeder::class);
-        $this->call(UserSeeder::class);
+
+        // The development admin has a well-known password: never on a production database.
+        // There, create the first administrator with: php artisan credix:create-admin
+        if (! app()->environment('production')) {
+            $this->call(UserSeeder::class);
+        }
+
+        $this->call(SettingsSeeder::class);
+        $this->call(ProductCatalogSeeder::class);
+        $this->call(DocumentRequirementSeeder::class);
+        $this->call(TemplateSeeder::class);
     }
 }
