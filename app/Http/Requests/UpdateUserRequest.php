@@ -40,9 +40,9 @@ class UpdateUserRequest extends FormRequest
             'id_number' => 'sometimes|string|unique:employees,id_number,'.$employeeId,
             'phone' => 'nullable|string',
             'branch_id' => 'nullable|exists:branches,id',
-            'zonal_id' => 'nullable|exists:zonals,id',
-            'region_id' => 'nullable|exists:regions,id',
-            'province_id' => 'nullable|exists:provinces,id',
+            'zonal_id' => 'nullable|exists:org_units,id,unit_type,zone',
+            'region_id' => 'nullable|exists:org_units,id,unit_type,region',
+            'province_id' => 'nullable|exists:org_units,id,unit_type,province',
             'designation_id' => 'nullable|exists:designations,id',
             'reporting_manager_id' => 'nullable|exists:employees,id',
 

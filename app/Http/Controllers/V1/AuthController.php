@@ -59,6 +59,7 @@ class AuthController extends Controller
             /** @var \PHPOpenSourceSaver\JWTAuth\JWTGuard $guard */
             $guard = Auth::guard('api');
             $token = $guard->login($user);
+            /** @var \App\Models\User $user */
             $user = auth('api')->user();
 
             if (! $user->canLogin()) {
@@ -158,6 +159,7 @@ class AuthController extends Controller
     public function me()
     {
         try {
+            /** @var \App\Models\User $user */
             $user = auth('api')->user();
 
             $user->load(['roles' => function ($query) {
@@ -181,6 +183,8 @@ class AuthController extends Controller
                 'message' => 'User details fetched successfully',
                 'data' => [
                     'user' => $user,
+                    // The branch of the user's employee record: the default branch for new records.
+                    'branch' => $user->employee?->branch?->only(['id', 'name', 'code']),
                 ],
             ], 200);
         } catch (\Throwable $th) {
