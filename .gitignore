@@ -46,6 +46,7 @@ _ide_helper_models.php
 .phpstorm.meta.php
 .phpdoc/
 /api-docs
+/docs
 
 # Editors, IDEs and AI assistants
 /.fleet
@@ -61,3 +62,5 @@ Homestead.json
 Homestead.yaml
 .DS_Store
 Thumbs.db
+~$*
+*.tmp
