@@ -43,4 +43,10 @@ return [
         'mask' => env('DIALOG_SMS_MASK'),
     ],
 
+    // Developer machines only (APP_ENV=local): write OTP codes to the log instead of sending SMS.
+    // Ignored in every other environment. Keep false unless you are testing OTP flows locally.
+    'otp' => [
+        'log_codes_locally' => env('OTP_LOG_CODES_LOCALLY', false),
+    ],
+
 ];

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureUserType;
 use App\Http\Middleware\ForceHttps;
 use App\Http\Middleware\SanitizeInput;
 use App\Http\Middleware\SecurityHeaders;
@@ -37,6 +38,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => RoleMiddleware::class,
             'sanitize.input' => SanitizeInput::class,
             'security.headers' => SecurityHeaders::class,
+            'user.type' => EnsureUserType::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
