@@ -1,20 +1,50 @@
 <?php
 
 use App\Http\Controllers\V1\ActivityLogController;
+use App\Http\Controllers\V1\AgencyCaseController;
+use App\Http\Controllers\V1\ApprovalRequestController;
 use App\Http\Controllers\V1\AuthController;
+use App\Http\Controllers\V1\BorrowerGroupController;
 use App\Http\Controllers\V1\BranchController;
 use App\Http\Controllers\V1\CountryController;
+use App\Http\Controllers\V1\CustomerBankAccountController;
+use App\Http\Controllers\V1\CustomerController;
+use App\Http\Controllers\V1\CustomerDocumentController;
+use App\Http\Controllers\V1\CustomerFinancialController;
+use App\Http\Controllers\V1\CustomerKycController;
 use App\Http\Controllers\V1\DatabaseController;
 use App\Http\Controllers\V1\DepartmentController;
 use App\Http\Controllers\V1\DesignationController;
+use App\Http\Controllers\V1\DocumentController;
+use App\Http\Controllers\V1\DocumentRequirementController;
+use App\Http\Controllers\V1\DocumentTypeController;
 use App\Http\Controllers\V1\EmployeeHierarchyController;
+use App\Http\Controllers\V1\GlAccountController;
+use App\Http\Controllers\V1\GlJournalController;
+use App\Http\Controllers\V1\GlReportController;
+use App\Http\Controllers\V1\GoldLoanRenewalController;
 use App\Http\Controllers\V1\GroupController;
 use App\Http\Controllers\V1\ImportController;
+use App\Http\Controllers\V1\LoanCollateralController;
+use App\Http\Controllers\V1\LoanController;
+use App\Http\Controllers\V1\LoanDisbursementController;
+use App\Http\Controllers\V1\LoanDocumentController;
+use App\Http\Controllers\V1\LoanPartyController;
+use App\Http\Controllers\V1\LoanServicingController;
+use App\Http\Controllers\V1\LoanWorkflowController;
+use App\Http\Controllers\V1\LoanWriteOffController;
 use App\Http\Controllers\V1\NotificationController;
+use App\Http\Controllers\V1\PaymentController;
 use App\Http\Controllers\V1\PermissionController;
+use App\Http\Controllers\V1\ProductCategoryController;
+use App\Http\Controllers\V1\ProductController;
 use App\Http\Controllers\V1\ProvinceController;
+use App\Http\Controllers\V1\RecoveryCaseController;
 use App\Http\Controllers\V1\RegionController;
+use App\Http\Controllers\V1\ReportController;
 use App\Http\Controllers\V1\RoleController;
+use App\Http\Controllers\V1\SettingController;
+use App\Http\Controllers\V1\TemplateController;
 use App\Http\Controllers\V1\UserController;
 use App\Http\Controllers\V1\ZonalController;
 use Illuminate\Support\Facades\Route;
@@ -22,14 +52,24 @@ use Illuminate\Support\Facades\Route;
 /* public routes */
 
 Route::prefix('v1')->group(function () {
-    Route::post('login', [AuthController::class, 'login'])->middleware('throttle:5,1');
+    Route::post('login', [AuthController::class, 'login'])->middleware('throttle:login');
 });
 
-/* protected routes */
-Route::middleware(['auth:api'])->prefix('v1')->group(function () {
+/* external recovery agencies: only the cases assigned to them */
+Route::middleware(['auth:api', 'user.type:agency'])->prefix('v1/agency')->group(function () {
+    Route::get('recovery-cases', [AgencyCaseController::class, 'index']);
+    Route::get('recovery-cases/{publicId}', [AgencyCaseController::class, 'show']);
+    Route::post('recovery-cases/{publicId}/activities', [AgencyCaseController::class, 'addActivity']);
+});
 
+/* routes for any logged-in user (staff, agency) */
+Route::middleware(['auth:api'])->prefix('v1')->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::get('me', [AuthController::class, 'me']);
+});
+
+/* back-office routes: closed to agency logins even where an endpoint has no permission */
+Route::middleware(['auth:api', 'user.type:admin,staff'])->prefix('v1')->group(function () {
 
     Route::get('permissions/list', [PermissionController::class, 'getPermissionList']);
     Route::apiResource('permissions', PermissionController::class);
@@ -41,56 +81,56 @@ Route::middleware(['auth:api'])->prefix('v1')->group(function () {
     Route::apiResource('users', UserController::class);
 
     // Countries
-    Route::apiResource('countries', CountryController::class);
+    Route::apiResource('countries', CountryController::class)->where(['country' => '[0-9]+']);
     Route::prefix('countries')->group(function () {
         Route::patch('{id}/toggle-status', [CountryController::class, 'toggleStatus']);
         Route::get('list', [CountryController::class, 'getActiveList']);
     });
 
     // Provinces
-    Route::apiResource('provinces', ProvinceController::class);
+    Route::apiResource('provinces', ProvinceController::class)->where(['province' => '[0-9]+']);
     Route::prefix('provinces')->group(function () {
         Route::patch('{id}/toggle-status', [ProvinceController::class, 'toggleStatus']);
         Route::get('list', [ProvinceController::class, 'getProvinceList']);
     });
 
     // Zonals (Zones)
-    Route::apiResource('zonals', ZonalController::class);
+    Route::apiResource('zonals', ZonalController::class)->where(['zonal' => '[0-9]+']);
     Route::prefix('zonals')->group(function () {
         Route::patch('{id}/toggle-status', [ZonalController::class, 'toggleStatus']);
         Route::get('list', [ZonalController::class, 'getZonalList']);
     });
 
     // Regions
-    Route::apiResource('regions', RegionController::class);
+    Route::apiResource('regions', RegionController::class)->where(['region' => '[0-9]+']);
     Route::prefix('regions')->group(function () {
         Route::patch('{id}/toggle-status', [RegionController::class, 'toggleStatus']);
         Route::get('list', [RegionController::class, 'getRegionList']);
     });
 
     // Branches
-    Route::apiResource('branches', BranchController::class);
+    Route::apiResource('branches', BranchController::class)->where(['branch' => '[0-9]+']);
     Route::prefix('branches')->group(function () {
         Route::patch('{id}/toggle-status', [BranchController::class, 'toggleStatus']);
         Route::get('list', [BranchController::class, 'getBranchList']);
     });
 
     // Departments
-    Route::apiResource('departments', DepartmentController::class);
+    Route::apiResource('departments', DepartmentController::class)->where(['department' => '[0-9]+']);
     Route::prefix('departments')->group(function () {
         Route::get('{id}/designations', [DepartmentController::class, 'getDesignations']);
         Route::patch('{id}/toggle-status', [DepartmentController::class, 'toggleStatus']);
     });
 
     // Designations
-    Route::apiResource('designations', DesignationController::class);
+    Route::apiResource('designations', DesignationController::class)->where(['designation' => '[0-9]+']);
     Route::prefix('designations')->group(function () {
         Route::get('list', [DesignationController::class, 'getActiveList']);
         Route::patch('{id}/toggle-status', [DesignationController::class, 'toggleStatus']);
     });
 
     // Groups
-    Route::apiResource('groups', GroupController::class);
+    Route::apiResource('groups', GroupController::class)->where(['group' => '[0-9]+']);
     Route::prefix('groups')->group(function () {
         Route::get('list', [GroupController::class, 'getActiveList']);
         Route::patch('{id}/toggle-status', [GroupController::class, 'toggleStatus']);
@@ -129,5 +169,225 @@ Route::middleware(['auth:api'])->prefix('v1')->group(function () {
         Route::get('catalog', [ImportController::class, 'index']);
         Route::get('template/{table}', [ImportController::class, 'downloadTemplate']);
         Route::post('{table}', [ImportController::class, 'import']);
+    });
+
+    // System Settings
+    Route::prefix('settings')->group(function () {
+        Route::get('/', [SettingController::class, 'index']);
+        Route::get('{key}', [SettingController::class, 'show']);
+        Route::put('{key}', [SettingController::class, 'update']);
+    });
+
+    // Product Categories (General / Islamic → Standard Borrowing / Development Fund → …)
+    Route::prefix('product-categories')->group(function () {
+        Route::get('/', [ProductCategoryController::class, 'index']);
+        Route::get('tree', [ProductCategoryController::class, 'tree']);
+        Route::post('/', [ProductCategoryController::class, 'store']);
+        Route::get('{slug}', [ProductCategoryController::class, 'show']);
+        Route::put('{slug}', [ProductCategoryController::class, 'update']);
+        Route::patch('{slug}/toggle-status', [ProductCategoryController::class, 'toggleStatus']);
+    });
+
+    // Products
+    Route::prefix('products')->group(function () {
+        Route::get('/', [ProductController::class, 'index']);
+        Route::get('options', [ProductController::class, 'options']);
+        Route::post('/', [ProductController::class, 'store']);
+        Route::get('{slug}', [ProductController::class, 'show']);
+        Route::put('{slug}', [ProductController::class, 'update']);
+        Route::delete('{slug}', [ProductController::class, 'destroy']);
+        Route::patch('{slug}/toggle-status', [ProductController::class, 'toggleStatus']);
+        Route::post('{slug}/shariah-review', [ProductController::class, 'submitForShariahReview']);
+        Route::get('{slug}/charges', [ProductController::class, 'charges']);
+        Route::put('{slug}/charges', [ProductController::class, 'replaceCharges']);
+        Route::get('{slug}/collateral-rules', [ProductController::class, 'collateralRules']);
+        Route::put('{slug}/collateral-rules', [ProductController::class, 'replaceCollateralRules']);
+        Route::post('{slug}/quote', [ProductController::class, 'quote']);
+    });
+
+    // Approval Requests (maker-checker inbox)
+    Route::prefix('approval-requests')->group(function () {
+        Route::get('/', [ApprovalRequestController::class, 'index']);
+        Route::get('{publicId}', [ApprovalRequestController::class, 'show'])->name('approval-requests.show');
+        Route::post('{publicId}/approve', [ApprovalRequestController::class, 'approve']);
+        Route::post('{publicId}/reject', [ApprovalRequestController::class, 'reject']);
+        Route::post('{publicId}/cancel', [ApprovalRequestController::class, 'cancel']);
+    });
+
+    // Document Types and Requirements
+    Route::prefix('document-types')->group(function () {
+        Route::get('/', [DocumentTypeController::class, 'index']);
+        Route::post('/', [DocumentTypeController::class, 'store']);
+        Route::get('{slug}', [DocumentTypeController::class, 'show']);
+        Route::put('{slug}', [DocumentTypeController::class, 'update']);
+        Route::patch('{slug}/toggle-status', [DocumentTypeController::class, 'toggleStatus']);
+    });
+
+    Route::prefix('document-requirements')->group(function () {
+        Route::get('/', [DocumentRequirementController::class, 'index']);
+        Route::post('/', [DocumentRequirementController::class, 'store']);
+        Route::put('{id}', [DocumentRequirementController::class, 'update']);
+        Route::delete('{id}', [DocumentRequirementController::class, 'destroy']);
+    });
+
+    // Customers (addressed by public_id; other branches' customers are invisible)
+    Route::prefix('customers')->group(function () {
+        Route::get('/', [CustomerController::class, 'index']);
+        Route::get('lookup', [CustomerController::class, 'lookup']);
+        Route::post('/', [CustomerController::class, 'store']);
+        Route::get('{publicId}', [CustomerController::class, 'show']);
+        Route::get('{publicId}/eligibility', [CustomerController::class, 'eligibility']);
+        Route::get('{publicId}/credit-score', [CustomerController::class, 'creditScore']);
+        Route::put('{publicId}', [CustomerController::class, 'update']);
+        Route::patch('{publicId}/toggle-status', [CustomerController::class, 'toggleStatus']);
+
+        // KYC by OTP – tight limits so codes cannot be sprayed or guessed
+        Route::post('{publicId}/kyc/send-otp', [CustomerKycController::class, 'sendOtp'])->middleware('throttle:otp-send');
+        Route::post('{publicId}/kyc/resend-otp', [CustomerKycController::class, 'resendOtp'])->middleware('throttle:otp-send');
+        Route::post('{publicId}/kyc/verify', [CustomerKycController::class, 'verify'])->middleware('throttle:otp-verify');
+
+        Route::get('{publicId}/financials', [CustomerFinancialController::class, 'index']);
+        Route::post('{publicId}/financials', [CustomerFinancialController::class, 'store']);
+        Route::put('{publicId}/financials/{id}', [CustomerFinancialController::class, 'update']);
+        Route::delete('{publicId}/financials/{id}', [CustomerFinancialController::class, 'destroy']);
+        Route::post('{publicId}/financials/{id}/verify', [CustomerFinancialController::class, 'verify']);
+
+        Route::get('{publicId}/bank-accounts', [CustomerBankAccountController::class, 'index']);
+        Route::post('{publicId}/bank-accounts', [CustomerBankAccountController::class, 'store']);
+        Route::put('{publicId}/bank-accounts/{accountId}', [CustomerBankAccountController::class, 'update']);
+        Route::delete('{publicId}/bank-accounts/{accountId}', [CustomerBankAccountController::class, 'destroy']);
+
+        Route::get('{publicId}/documents', [CustomerDocumentController::class, 'index']);
+        Route::post('{publicId}/documents', [CustomerDocumentController::class, 'store'])->middleware('throttle:30,1');
+        Route::get('{publicId}/document-checklist', [CustomerDocumentController::class, 'checklist']);
+    });
+
+    // Documents (download only through this authorised endpoint, never by path)
+    Route::prefix('documents')->group(function () {
+        Route::get('{publicId}/download', [DocumentController::class, 'download']);
+        Route::post('{publicId}/verify', [DocumentController::class, 'verify']);
+        Route::post('{publicId}/reject', [DocumentController::class, 'reject']);
+        Route::delete('{publicId}', [DocumentController::class, 'destroy']);
+    });
+
+    // Borrower Groups
+    Route::prefix('borrower-groups')->group(function () {
+        Route::get('/', [BorrowerGroupController::class, 'index']);
+        Route::post('/', [BorrowerGroupController::class, 'store']);
+        Route::get('{publicId}', [BorrowerGroupController::class, 'show']);
+        Route::put('{publicId}', [BorrowerGroupController::class, 'update']);
+        Route::post('{publicId}/members', [BorrowerGroupController::class, 'addMember']);
+        Route::patch('{publicId}/members/{memberId}', [BorrowerGroupController::class, 'changeRole']);
+        Route::post('{publicId}/members/{memberId}/leave', [BorrowerGroupController::class, 'removeMember']);
+    });
+
+    // Loans (applications → active loans). Workflow steps are explicit commands.
+    Route::prefix('loans')->group(function () {
+        Route::get('/', [LoanController::class, 'index']);
+        Route::post('/', [LoanController::class, 'store']);
+        Route::get('{publicId}', [LoanController::class, 'show']);
+        Route::put('{publicId}', [LoanController::class, 'update']);
+        Route::get('{publicId}/schedule', [LoanController::class, 'schedule']);
+        Route::get('{publicId}/activities', [LoanController::class, 'activities']);
+        Route::post('{publicId}/notes', [LoanController::class, 'addNote']);
+        Route::get('{publicId}/document-checklist', [LoanController::class, 'checklist']);
+
+        Route::post('{publicId}/submit', [LoanWorkflowController::class, 'submit']);
+        Route::post('{publicId}/start-review', [LoanWorkflowController::class, 'startReview']);
+        Route::post('{publicId}/return', [LoanWorkflowController::class, 'returnForCorrection']);
+        Route::post('{publicId}/verify', [LoanWorkflowController::class, 'verify']);
+        Route::post('{publicId}/approve', [LoanWorkflowController::class, 'approve']);
+        Route::post('{publicId}/reject', [LoanWorkflowController::class, 'reject']);
+        Route::post('{publicId}/cancel', [LoanWorkflowController::class, 'cancel']);
+
+        Route::post('{publicId}/guarantors', [LoanPartyController::class, 'addGuarantor']);
+        Route::delete('{publicId}/guarantors/{partyId}', [LoanPartyController::class, 'removeGuarantor'])->whereNumber('partyId');
+        Route::post('{publicId}/parties/{partyId}/consent/send-otp', [LoanPartyController::class, 'sendConsent'])->whereNumber('partyId')->middleware('throttle:otp-send');
+        Route::post('{publicId}/parties/{partyId}/consent/verify', [LoanPartyController::class, 'verifyConsent'])->whereNumber('partyId')->middleware('throttle:otp-verify');
+        Route::post('{publicId}/parties/{partyId}/offer/send-otp', [LoanPartyController::class, 'sendOffer'])->whereNumber('partyId')->middleware('throttle:otp-send');
+        Route::post('{publicId}/parties/{partyId}/offer/accept', [LoanPartyController::class, 'acceptOffer'])->whereNumber('partyId')->middleware('throttle:otp-verify');
+        Route::post('{publicId}/offer/decline', [LoanPartyController::class, 'declineOffer']);
+
+        Route::get('{publicId}/collaterals', [LoanCollateralController::class, 'index']);
+        Route::post('{publicId}/collaterals', [LoanCollateralController::class, 'store']);
+        Route::post('{publicId}/collaterals/{collateralId}/verify', [LoanCollateralController::class, 'verify']);
+        Route::post('{publicId}/collaterals/{collateralId}/perfect', [LoanCollateralController::class, 'perfect']);
+        Route::delete('{publicId}/collaterals/{collateralId}', [LoanCollateralController::class, 'destroy']);
+        Route::post('{publicId}/collaterals/{collateralId}/documents', [LoanCollateralController::class, 'uploadDocument'])->middleware('throttle:30,1');
+
+        Route::get('{publicId}/documents', [LoanDocumentController::class, 'index']);
+        Route::post('{publicId}/documents', [LoanDocumentController::class, 'store'])->middleware('throttle:30,1');
+
+        Route::post('{publicId}/disburse', [LoanDisbursementController::class, 'disburse']);
+
+        // Servicing
+        Route::get('{publicId}/statement', [LoanServicingController::class, 'statement']);
+        Route::get('{publicId}/settlement-quote', [LoanServicingController::class, 'settlementQuote']);
+        Route::post('{publicId}/settle', [LoanServicingController::class, 'settle']);
+        Route::post('{publicId}/installments/{installmentNo}/penalty-waiver', [LoanServicingController::class, 'waivePenalty'])->whereNumber('installmentNo');
+        Route::post('{publicId}/restructure', [LoanServicingController::class, 'restructure']);
+
+        // Gold loan renewal (POST needs an Idempotency-Key header)
+        Route::get('{publicId}/renewal-quote', [GoldLoanRenewalController::class, 'quote']);
+        Route::post('{publicId}/renew', [GoldLoanRenewalController::class, 'renew'])->middleware('throttle:60,1');
+
+        // Write-off (approval inbox) and recoveries afterwards (POST needs an Idempotency-Key header)
+        Route::post('{publicId}/write-off', [LoanWriteOffController::class, 'request']);
+        Route::get('{publicId}/write-off', [LoanWriteOffController::class, 'summary']);
+        Route::post('{publicId}/recoveries', [LoanWriteOffController::class, 'recover'])->middleware('throttle:60,1');
+    });
+
+    // Recovery
+    Route::prefix('recovery-cases')->group(function () {
+        Route::get('/', [RecoveryCaseController::class, 'index']);
+        Route::get('{publicId}', [RecoveryCaseController::class, 'show']);
+        Route::post('{publicId}/assign', [RecoveryCaseController::class, 'assign']);
+        Route::post('{publicId}/legal', [RecoveryCaseController::class, 'moveToLegal']);
+        Route::post('{publicId}/activities', [RecoveryCaseController::class, 'addActivity']);
+    });
+
+    // Message templates and the log of messages sent
+    Route::get('templates', [TemplateController::class, 'index']);
+    Route::post('templates', [TemplateController::class, 'store']);
+    Route::get('templates/{id}', [TemplateController::class, 'show'])->whereNumber('id');
+    Route::put('templates/{id}', [TemplateController::class, 'update'])->whereNumber('id');
+    Route::get('notification-logs', [TemplateController::class, 'logs']);
+
+    // Reports and dashboard
+    Route::get('dashboard/overview', [ReportController::class, 'overview']);
+    Route::get('dashboard/trend', [ReportController::class, 'trend']);
+    Route::prefix('reports')->group(function () {
+        Route::get('portfolio', [ReportController::class, 'portfolio']);
+        Route::get('arrears-aging', [ReportController::class, 'arrearsAging']);
+        Route::get('collections', [ReportController::class, 'collections']);
+        Route::get('disbursements', [ReportController::class, 'disbursements']);
+        Route::get('branch-performance', [ReportController::class, 'branchPerformance']);
+        Route::get('recovery', [ReportController::class, 'recovery']);
+    });
+
+    // General ledger (manual journals are approved in the approval inbox)
+    Route::prefix('gl')->group(function () {
+        Route::get('accounts', [GlAccountController::class, 'index']);
+        Route::post('accounts', [GlAccountController::class, 'store']);
+        Route::put('accounts/{id}', [GlAccountController::class, 'update'])->whereNumber('id');
+        Route::get('accounts/{id}/statement', [GlReportController::class, 'statement'])->whereNumber('id');
+
+        Route::get('journals', [GlJournalController::class, 'index']);
+        Route::post('journals', [GlJournalController::class, 'store']);
+        Route::get('journals/export', [GlJournalController::class, 'export'])->middleware('throttle:10,1');
+        Route::get('journals/{publicId}', [GlJournalController::class, 'show']);
+
+        Route::get('trial-balance', [GlReportController::class, 'trialBalance']);
+        Route::get('reconciliation', [GlReportController::class, 'reconciliation']);
+        Route::get('period', [GlReportController::class, 'period']);
+        Route::post('period/close', [GlReportController::class, 'closePeriod']);
+    });
+
+    // Payments (POST needs an Idempotency-Key header; reversals go through approval requests)
+    Route::prefix('payments')->group(function () {
+        Route::get('/', [PaymentController::class, 'index']);
+        Route::post('/', [PaymentController::class, 'store'])->middleware('throttle:60,1');
+        Route::get('{publicId}', [PaymentController::class, 'show']);
+        Route::post('{publicId}/reverse', [PaymentController::class, 'reverse']);
     });
 });
