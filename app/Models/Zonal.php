@@ -2,16 +2,12 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use App\Enums\OrgUnitType;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Zonal extends Model
+class Zonal extends OrgUnit
 {
-    use HasFactory;
-
     protected $fillable = [
         'name',
         'code',
@@ -23,27 +19,14 @@ class Zonal extends Model
         'is_active' => 'boolean',
     ];
 
-    /**
-     * Scope a query to only include active zonals.
-     */
-    public function scopeActive(Builder $query): Builder
+    public static function unitType(): OrgUnitType
     {
-        return $query->where('is_active', true);
+        return OrgUnitType::Zone;
     }
 
-    /**
-     * Scope a query to search zonals by name or code.
-     */
-    public function scopeSearch(Builder $query, ?string $search): Builder
+    protected static function parentAttribute(): ?string
     {
-        if (empty($search)) {
-            return $query;
-        }
-
-        return $query->where(function (Builder $q) use ($search) {
-            $q->where('name', 'like', "%{$search}%")
-                ->orWhere('code', 'like', "%{$search}%");
-        });
+        return 'province_id';
     }
 
     /**
@@ -51,7 +34,7 @@ class Zonal extends Model
      */
     public function province(): BelongsTo
     {
-        return $this->belongsTo(Province::class);
+        return $this->belongsTo(Province::class, 'parent_id');
     }
 
     /**
@@ -59,6 +42,6 @@ class Zonal extends Model
      */
     public function regions(): HasMany
     {
-        return $this->hasMany(Region::class);
+        return $this->hasMany(Region::class, 'parent_id');
     }
 }

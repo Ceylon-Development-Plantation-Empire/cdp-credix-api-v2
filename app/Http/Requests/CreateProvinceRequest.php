@@ -25,8 +25,8 @@ class CreateProvinceRequest extends FormRequest
     {
         return [
             'name' => 'required|string|max:255',
-            'code' => 'required|string|unique:provinces,code|max:10',
-            'country_id' => 'required|exists:countries,id',
+            'code' => 'required|string|unique:org_units,code,NULL,id,unit_type,province|max:10',
+            'country_id' => 'required|exists:org_units,id,unit_type,country',
             'is_active' => 'sometimes|boolean',
         ];
     }

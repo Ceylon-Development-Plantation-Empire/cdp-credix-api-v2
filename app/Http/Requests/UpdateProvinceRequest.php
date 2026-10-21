@@ -27,8 +27,8 @@ class UpdateProvinceRequest extends FormRequest
 
         return [
             'name' => 'sometimes|string|max:255',
-            'code' => 'sometimes|string|max:10|unique:provinces,code,'.$id,
-            'country_id' => 'sometimes|exists:countries,id',
+            'code' => 'sometimes|string|max:10|unique:org_units,code,'.$id.',id,unit_type,province',
+            'country_id' => 'sometimes|exists:org_units,id,unit_type,country',
             'is_active' => 'sometimes|boolean',
         ];
     }

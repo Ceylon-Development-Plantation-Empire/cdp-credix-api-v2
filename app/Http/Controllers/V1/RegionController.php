@@ -21,11 +21,11 @@ class RegionController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Region Index', ['only' => ['index', 'show']]),
-            new Middleware('permission:Region Create', ['only' => ['store']]),
-            new Middleware('permission:Region Update', ['only' => ['update']]),
-            new Middleware('permission:Region Delete', ['only' => ['destroy']]),
-            new Middleware('permission:Region Toggle Status', ['only' => ['toggleStatus']]),
+            new Middleware('permission:Region Index', only: ['index', 'show']),
+            new Middleware('permission:Region Create', only: ['store']),
+            new Middleware('permission:Region Update', only: ['update']),
+            new Middleware('permission:Region Delete', only: ['destroy']),
+            new Middleware('permission:Region Toggle Status', only: ['toggleStatus']),
         ];
     }
 
@@ -44,7 +44,7 @@ class RegionController extends Controller implements HasMiddleware
             }
 
             if ($request->has('zonal_id')) {
-                $query->where('zonal_id', $request->zonal_id);
+                $query->where('parent_id', $request->zonal_id);
             }
 
             if ($request->has('is_active')) {
@@ -205,10 +205,10 @@ class RegionController extends Controller implements HasMiddleware
             $query = Region::active();
 
             if ($request->has('zonal_id')) {
-                $query->where('zonal_id', $request->zonal_id);
+                $query->where('parent_id', $request->zonal_id);
             }
 
-            $regions = $query->orderBy('name', 'asc')->get(['id', 'name', 'code', 'zonal_id']);
+            $regions = $query->orderBy('name', 'asc')->get(['id', 'name', 'code', 'parent_id']);
 
             return response()->json([
                 'status' => 'success',

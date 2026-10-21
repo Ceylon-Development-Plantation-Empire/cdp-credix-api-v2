@@ -21,11 +21,11 @@ class ZonalController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Zonal Index', ['only' => ['index', 'show']]),
-            new Middleware('permission:Zonal Create', ['only' => ['store']]),
-            new Middleware('permission:Zonal Update', ['only' => ['update']]),
-            new Middleware('permission:Zonal Delete', ['only' => ['destroy']]),
-            new Middleware('permission:Zonal Toggle Status', ['only' => ['toggleStatus']]),
+            new Middleware('permission:Zonal Index', only: ['index', 'show']),
+            new Middleware('permission:Zonal Create', only: ['store']),
+            new Middleware('permission:Zonal Update', only: ['update']),
+            new Middleware('permission:Zonal Delete', only: ['destroy']),
+            new Middleware('permission:Zonal Toggle Status', only: ['toggleStatus']),
         ];
     }
 
@@ -44,7 +44,7 @@ class ZonalController extends Controller implements HasMiddleware
             }
 
             if ($request->has('province_id')) {
-                $query->where('province_id', $request->province_id);
+                $query->where('parent_id', $request->province_id);
             }
 
             if ($request->has('is_active')) {
@@ -205,10 +205,10 @@ class ZonalController extends Controller implements HasMiddleware
             $query = Zonal::active();
 
             if ($request->has('province_id')) {
-                $query->where('province_id', $request->province_id);
+                $query->where('parent_id', $request->province_id);
             }
 
-            $zonals = $query->orderBy('name', 'asc')->get(['id', 'name', 'code', 'province_id']);
+            $zonals = $query->orderBy('name', 'asc')->get(['id', 'name', 'code', 'parent_id']);
 
             return response()->json([
                 'status' => 'success',

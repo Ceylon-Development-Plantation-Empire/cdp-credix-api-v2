@@ -27,7 +27,7 @@ class UpdateCountryRequest extends FormRequest
 
         return [
             'name' => 'sometimes|string|max:255',
-            'code' => 'sometimes|string|max:10|unique:countries,code,'.$id,
+            'code' => 'sometimes|string|max:10|unique:org_units,code,'.$id.',id,unit_type,country',
             'description' => 'nullable|string|max:1000',
             'is_active' => 'sometimes|boolean',
         ];

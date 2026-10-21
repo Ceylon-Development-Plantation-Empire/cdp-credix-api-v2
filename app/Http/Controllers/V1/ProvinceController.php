@@ -21,11 +21,11 @@ class ProvinceController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Province Index', ['only' => ['index', 'show']]),
-            new Middleware('permission:Province Create', ['only' => ['store']]),
-            new Middleware('permission:Province Update', ['only' => ['update']]),
-            new Middleware('permission:Province Delete', ['only' => ['destroy']]),
-            new Middleware('permission:Province Toggle Status', ['only' => ['toggleStatus']]),
+            new Middleware('permission:Province Index', only: ['index', 'show']),
+            new Middleware('permission:Province Create', only: ['store']),
+            new Middleware('permission:Province Update', only: ['update']),
+            new Middleware('permission:Province Delete', only: ['destroy']),
+            new Middleware('permission:Province Toggle Status', only: ['toggleStatus']),
         ];
     }
 
@@ -44,7 +44,7 @@ class ProvinceController extends Controller implements HasMiddleware
             }
 
             if ($request->has('country_id')) {
-                $query->where('country_id', $request->country_id);
+                $query->where('parent_id', $request->country_id);
             }
 
             if ($request->has('is_active')) {
@@ -197,10 +197,10 @@ class ProvinceController extends Controller implements HasMiddleware
             $query = Province::active();
 
             if ($request->has('country_id')) {
-                $query->where('country_id', $request->country_id);
+                $query->where('parent_id', $request->country_id);
             }
 
-            $provinces = $query->orderBy('name', 'asc')->get(['id', 'name', 'code', 'country_id']);
+            $provinces = $query->orderBy('name', 'asc')->get(['id', 'name', 'code', 'parent_id']);
 
             return response()->json([
                 'status' => 'success',

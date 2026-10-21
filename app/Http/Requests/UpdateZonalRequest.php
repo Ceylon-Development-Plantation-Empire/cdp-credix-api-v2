@@ -27,8 +27,8 @@ class UpdateZonalRequest extends FormRequest
 
         return [
             'name' => 'sometimes|string|max:255',
-            'code' => 'sometimes|string|max:10|unique:zonals,code,'.$id,
-            'province_id' => 'sometimes|exists:provinces,id',
+            'code' => 'sometimes|string|max:10|unique:org_units,code,'.$id.',id,unit_type,zone',
+            'province_id' => 'sometimes|exists:org_units,id,unit_type,province',
             'is_active' => 'sometimes|boolean',
         ];
     }
