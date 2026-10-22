@@ -6,6 +6,7 @@ namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documents\RejectDocumentRequest;
+use App\Http\Requests\Documents\UpdateDocumentRequest;
 use App\Http\Resources\Documents\DocumentResource;
 use App\Models\Collateral;
 use App\Models\Document;
@@ -33,6 +34,7 @@ class DocumentController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:Document Index', only: ['download']),
+            new Middleware('permission:Document Update', only: ['update']),
             new Middleware('permission:Document Verify', only: ['verify', 'reject']),
             new Middleware('permission:Document Delete', only: ['destroy']),
         ];
@@ -50,6 +52,28 @@ class DocumentController extends Controller implements HasMiddleware
             return $this->documents->download($document);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to download document', $th);
+        }
+    }
+
+    public function update(UpdateDocumentRequest $request, string $publicId)
+    {
+        try {
+            $document = $this->findAccessible($publicId);
+
+            if (! $document) {
+                return $this->notFound('Document not found');
+            }
+
+            $data = $request->validated();
+            $document = $this->documents->update($document, $data, $request->file('file'), $request, $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Document updated',
+                'data' => new DocumentResource($document->load(['documentType', 'uploader', 'verifier'])),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to update document', $th);
         }
     }
 

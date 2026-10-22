@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Documents;
 
+use App\Support\BusinessDate;
 use App\Enums\DocumentStatus;
 use App\Enums\DocumentTarget;
 use App\Enums\LoanStatus;
@@ -77,23 +78,7 @@ class DocumentService
 
         $this->assertNotFrozen($owner);
 
-        $contentType = $file->getMimeType();
-        $extension = $this->extensionFor($type, $contentType);
-
-        if ($extension === null) {
-            throw new BusinessRuleException('DOCUMENT_FORMAT_NOT_ALLOWED', 'This file format is not accepted for '.$type->name.'. Allowed: '.$type->allowed_mimes.'.', 422);
-        }
-
-        // SECURITY: the trait keeps the client's extension, so it must agree with the real content
-        // (a PDF named invoice.php is refused instead of being stored as .php).
-        $clientExtension = strtolower((string) $file->getClientOriginalExtension());
-        if (! in_array($contentType, self::CONTENT_TYPES[$clientExtension] ?? [], true)) {
-            throw new BusinessRuleException('DOCUMENT_FORMAT_NOT_ALLOWED', 'The file extension does not match its content. Allowed: '.$type->allowed_mimes.'.', 422);
-        }
-
-        if ($file->getSize() > $type->max_size_kb * 1024) {
-            throw new BusinessRuleException('DOCUMENT_TOO_LARGE', "The file is larger than {$type->max_size_kb} KB.", 422);
-        }
+        $contentType = $this->assertFileAcceptable($type, $file);
 
         // The checksum is taken from the upload itself, before it is stored.
         $checksum = hash_file('sha256', $file->getRealPath());
@@ -132,6 +117,106 @@ class DocumentService
         $this->logActivity('UPLOAD', 'Document', "Uploaded {$type->name} ({$document->public_id})");
 
         return $document;
+    }
+
+    /**
+     * Change a document that has not been verified: its details, its type, or the file itself.
+     * A new file or a new type is a new thing to check, so the document goes back to pending.
+     *
+     * @param  array{document_type_slug?: string, issued_on?: string|null, expires_on?: string|null, remarks?: string|null}  $data
+     */
+    public function update(Document $document, array $data, ?UploadedFile $file, Request $request, User $user): Document
+    {
+        if ($document->status === DocumentStatus::Verified) {
+            throw new BusinessRuleException('DOCUMENT_VERIFIED_LOCKED', 'A verified document cannot be changed.', 409);
+        }
+
+        $owner = $document->documentable;
+        $this->assertNotFrozen($owner);
+
+        $type = isset($data['document_type_slug']) ? DocumentType::findBySlug($data['document_type_slug']) : $document->documentType;
+        $typeChanged = $type->id !== $document->document_type_id;
+
+        if ($typeChanged) {
+            if (! $type->is_active) {
+                throw new BusinessRuleException('DOCUMENT_TYPE_INACTIVE', 'This document type is no longer accepted.', 422);
+            }
+
+            if ($type->target !== $this->targetFor($owner)) {
+                throw new BusinessRuleException('DOCUMENT_TYPE_MISMATCH', "A {$type->name} cannot be attached here.", 422);
+            }
+        }
+
+        $changes = [];
+
+        if ($file !== null) {
+            $contentType = $this->assertFileAcceptable($type, $file);
+            $checksum = hash_file('sha256', $file->getRealPath());
+            $size = $file->getSize();
+            $originalName = Str::limit(basename($file->getClientOriginalName()), 200, '');
+
+            $path = $this->handleFileUpload($request, 'file', null, 'documents/'.BusinessDate::today()->format('Y/m'), (string) Str::ulid());
+
+            if ($path === null) {
+                throw new BusinessRuleException('DOCUMENT_FILE_MISSING', 'No file was received.', 422);
+            }
+
+            // The replaced file stays on disk for audit, like a deleted document's file.
+            $changes += ['original_name' => $originalName, 'path' => $path, 'mime_type' => $contentType, 'size_bytes' => $size, 'checksum_sha256' => $checksum];
+        } elseif ($typeChanged) {
+            $this->assertFileAcceptable($type, null, $document->mime_type, $document->size_bytes);
+        }
+
+        foreach (['issued_on', 'expires_on', 'remarks'] as $field) {
+            if (array_key_exists($field, $data)) {
+                $changes[$field] = $data[$field];
+            }
+        }
+
+        if ($typeChanged) {
+            $changes['document_type_id'] = $type->id;
+        }
+
+        if ($file !== null || $typeChanged) {
+            $changes += ['status' => DocumentStatus::Pending, 'verified_by' => null, 'verified_at' => null, 'rejection_reason' => null];
+        }
+
+        $document->forceFill($changes)->save();
+
+        $this->logActivity('UPDATE', 'Document', "Updated document {$document->public_id}".($file !== null ? ' (file replaced)' : ''));
+
+        return $document;
+    }
+
+    /**
+     * The real content type, checked against the document type's formats and size limit.
+     * Without a file, the stored file's content type and size are checked (a type change).
+     *
+     * @throws BusinessRuleException DOCUMENT_* when it is not acceptable.
+     */
+    protected function assertFileAcceptable(DocumentType $type, ?UploadedFile $file, ?string $storedContentType = null, ?int $storedSize = null): string
+    {
+        $contentType = $file ? $file->getMimeType() : $storedContentType;
+        $size = $file ? $file->getSize() : $storedSize;
+
+        if ($this->extensionFor($type, $contentType) === null) {
+            throw new BusinessRuleException('DOCUMENT_FORMAT_NOT_ALLOWED', 'This file format is not accepted for '.$type->name.'. Allowed: '.$type->allowed_mimes.'.', 422);
+        }
+
+        // SECURITY: the trait keeps the client's extension, so it must agree with the real content
+        // (a PDF named invoice.php is refused instead of being stored as .php).
+        if ($file) {
+            $clientExtension = strtolower((string) $file->getClientOriginalExtension());
+            if (! in_array($contentType, self::CONTENT_TYPES[$clientExtension] ?? [], true)) {
+                throw new BusinessRuleException('DOCUMENT_FORMAT_NOT_ALLOWED', 'The file extension does not match its content. Allowed: '.$type->allowed_mimes.'.', 422);
+            }
+        }
+
+        if ($size > $type->max_size_kb * 1024) {
+            throw new BusinessRuleException('DOCUMENT_TOO_LARGE', "The file is larger than {$type->max_size_kb} KB.", 422);
+        }
+
+        return $contentType;
     }
 
     /**

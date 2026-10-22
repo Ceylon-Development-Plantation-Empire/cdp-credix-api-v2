@@ -164,6 +164,7 @@ class PermissionsSeeder extends Seeder
             /* Documents */
             ['name' => 'Document Index', 'group_name' => 'Document Permissions'],
             ['name' => 'Document Upload', 'group_name' => 'Document Permissions'],
+            ['name' => 'Document Update', 'group_name' => 'Document Permissions'],
             ['name' => 'Document Verify', 'group_name' => 'Document Permissions'],
             ['name' => 'Document Delete', 'group_name' => 'Document Permissions'],
 
