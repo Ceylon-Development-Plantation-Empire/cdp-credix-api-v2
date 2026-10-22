@@ -219,7 +219,7 @@ class DesignationController extends Controller implements HasMiddleware
 
             $designations = $query->orderBy('order_weight', 'desc')
                 ->orderBy('name', 'asc')
-                ->get(['id', 'name', 'code', 'department_id', 'level', 'order_weight']);
+                ->get(['id', 'name', 'code', 'department_id', 'level_id', 'order_weight']);
 
             return response()->json([
                 'status' => 'success',

@@ -66,11 +66,19 @@ class StaffDirectoryController extends Controller
                 $query->permission($filters['permission']);
             }
 
+            if (! empty($filters['user_type'])) {
+                $query->where('user_type', $filters['user_type']);
+            }
+
             $restricted = BranchAccess::restrictedBranchId();
             $branchId = $restricted ?? ($request->filled('branch_id') ? $request->integer('branch_id') : null);
 
+            // DECISION: recovery agencies serve every branch and have no employee record, so a branch
+            // filter keeps them; otherwise a branch recovery manager could never assign one.
             if ($branchId !== null) {
-                $query->whereHas('employee', fn (Builder $q) => $q->where('branch_id', $branchId));
+                $query->where(fn (Builder $w) => $w
+                    ->whereHas('employee', fn (Builder $q) => $q->where('branch_id', $branchId))
+                    ->orWhere('user_type', UserType::Agency->value));
             }
 
             return response()->json([

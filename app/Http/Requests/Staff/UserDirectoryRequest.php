@@ -30,6 +30,8 @@ class UserDirectoryRequest extends FormRequest
             'search' => ['nullable', 'string', 'max:100'],
             'branch_id' => ['nullable', 'integer'],
             'permission' => ['nullable', 'string', 'max:100'],
+            // e.g. ?user_type=agency for the external recovery agencies
+            'user_type' => ['nullable', 'string', 'in:admin,staff,agency'],
         ];
     }
 }
