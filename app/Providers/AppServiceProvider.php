@@ -165,11 +165,17 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('password-change', fn (Request $request) => Limit::perMinute(5)->by('password-change|'.$request->user()?->id));
 
         RateLimiter::for('otp-send', function (Request $request) {
-            return Limit::perMinute(3)->by('otp-send|'.$request->user()?->id.'|'.$request->route('publicId').'|'.$request->route('partyId'));
+            return Limit::perMinute(3)->by('otp-send|'.$request->user()?->id.'|'.$request->route('publicId').'|'.$request->route('partyId').'|'.$request->route('customerPublicId'));
         });
 
+        // The public customer review link: no user is signed in, so the buckets are the link and the address.
+        // Opening and correcting are generous; asking for a code is tight; guessing a code is tighter still.
+        RateLimiter::for('review-open', fn (Request $request) => Limit::perMinute(30)->by('review-open|'.$request->ip().'|'.sha1((string) $request->route('token'))));
+        RateLimiter::for('review-otp', fn (Request $request) => Limit::perMinute(3)->by('review-otp|'.sha1((string) $request->route('token'))));
+        RateLimiter::for('review-confirm', fn (Request $request) => Limit::perMinute(6)->by('review-confirm|'.sha1((string) $request->route('token'))));
+
         RateLimiter::for('otp-verify', function (Request $request) {
-            return Limit::perMinute(10)->by('otp-verify|'.$request->user()?->id.'|'.$request->route('publicId').'|'.$request->route('partyId'));
+            return Limit::perMinute(10)->by('otp-verify|'.$request->user()?->id.'|'.$request->route('publicId').'|'.$request->route('partyId').'|'.$request->route('customerPublicId'));
         });
     }
 }

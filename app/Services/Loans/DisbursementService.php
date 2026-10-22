@@ -49,6 +49,7 @@ class DisbursementService
         protected LoanChecklistService $checklist,
         protected LoanPostingService $posting,
         protected SafekeepingFeeService $safekeeping,
+        protected LoanReviewLinkService $reviews,
     ) {}
 
     /**
@@ -209,6 +210,18 @@ class DisbursementService
             }
         }
 
+        // Optional (setting loan_review.required_before_disbursement): the customer confirmed their details
+        // and the terms on the review link, or with an officer, and nothing changed since.
+        if (Setting::value('loan_review.required_before_disbursement', false)) {
+            foreach ($borrowingLoans as $each) {
+                foreach ($this->reviews->recipients($each) as $party) {
+                    if (! $this->reviews->isConfirmed($party)) {
+                        $problems[] = ['code' => 'REVIEW_NOT_CONFIRMED', 'message' => 'The customer has not confirmed their details and the loan terms (review link).', 'customer_no' => $party->customer->customer_no];
+                    }
+                }
+            }
+        }
+
         $collaterals = $loan->collaterals()->whereIn('status', [CollateralStatus::Proposed->value, CollateralStatus::Verified->value, CollateralStatus::Perfected->value])->get();
 
         if ($collaterals->contains(fn ($c) => $c->status !== CollateralStatus::Perfected)) {
@@ -244,6 +257,6 @@ class DisbursementService
 
     protected function loanNo(Loan $loan): string
     {
-        return 'LN-'.str_pad((string) $loan->id, 6, '0', STR_PAD_LEFT);
+        return Loan::nextLoanNo();
     }
 }
