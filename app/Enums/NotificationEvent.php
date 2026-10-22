@@ -34,7 +34,7 @@ enum NotificationEvent: string
         return [...$common, ...match ($this) {
             self::LoanApproved => ['application_no', 'amount', 'installment_amount', 'tenure'],
             self::LoanRejected => ['application_no'],
-            self::LoanReviewLink => ['application_no', 'review_link', 'valid_hours'],
+            self::LoanReviewLink => ['application_no', 'review_link'],
             self::LoanDisbursed => ['loan_no', 'amount', 'net_amount', 'installment_amount', 'first_due_date'],
             self::PaymentReceived => ['loan_no', 'amount', 'txn_no', 'outstanding'],
             self::LoanSettled => ['loan_no'],

@@ -108,8 +108,8 @@ class SettingsSeeder extends Seeder
                 'Approval rate target (%)', 'Approved ÷ (approved + rejected) in the period. 0 = no target.'],
 
             /* Customer review link */
-            ['loan_review.link_validity_hours', 'loans', SettingType::Integer, '48', ['value' => 'required|integer|min:1|max:720'],
-                'Review link valid for (hours)', 'How long the SMS link where the customer checks and confirms their details stays open.'],
+            ['loan_review.max_opens', 'loans', SettingType::Integer, '2', ['value' => 'required|integer|min:1|max:100'],
+                'Review link opens allowed', 'How many times the customer can open the SMS link (each page load counts). After that the branch sends a new link.'],
             ['loan_review.required_before_disbursement', 'loans', SettingType::Boolean, '0', ['value' => 'required|boolean'],
                 'Customer review needed to disburse', 'When on, a loan is not disbursed until every borrower has confirmed the review link (or an officer confirmed it with them).'],
 

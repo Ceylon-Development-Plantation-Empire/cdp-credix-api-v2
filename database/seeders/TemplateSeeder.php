@@ -21,7 +21,7 @@ class TemplateSeeder extends Seeder
         $texts = [
             NotificationEvent::LoanApproved->value => '{{company_name}}: Dear {{customer_name}}, your loan {{application_no}} of Rs {{amount}} is approved ({{tenure}} installments of Rs {{installment_amount}}). Please visit the branch to accept the offer.',
             NotificationEvent::LoanRejected->value => '{{company_name}}: Dear {{customer_name}}, we are unable to approve loan application {{application_no}} at this time. Please contact your branch for details.',
-            NotificationEvent::LoanReviewLink->value => '{{company_name}}: Dear {{customer_name}}, please check your details and the terms of loan {{application_no}} and confirm them here: {{review_link}} (valid {{valid_hours}} hours). We will never ask for your code by phone.',
+            NotificationEvent::LoanReviewLink->value => '{{company_name}}: Dear {{customer_name}}, please check your details and the terms of loan {{application_no}} and confirm them here: {{review_link}} We will never ask for your code by phone.',
             NotificationEvent::LoanDisbursed->value => '{{company_name}}: Dear {{customer_name}}, loan {{loan_no}} of Rs {{amount}} is disbursed (Rs {{net_amount}} paid out). First installment of Rs {{installment_amount}} is due on {{first_due_date}}.',
             NotificationEvent::PaymentReceived->value => '{{company_name}}: Rs {{amount}} received for loan {{loan_no}} (ref {{txn_no}}). Balance Rs {{outstanding}}. Thank you.',
             NotificationEvent::LoanSettled->value => '{{company_name}}: Dear {{customer_name}}, loan {{loan_no}} is fully settled. Thank you for banking with us.',

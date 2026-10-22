@@ -29,6 +29,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $review_sent_at
  * @property Carbon|null $review_expires_at
  * @property Carbon|null $review_viewed_at
+ * @property int $review_open_count
  * @property Carbon|null $review_confirmed_at
  * @property string|null $review_confirmed_via
  * @property string|null $review_reason
