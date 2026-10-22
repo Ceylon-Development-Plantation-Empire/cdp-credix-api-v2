@@ -84,8 +84,8 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * Times are stored and computed in UTC; the API shows them in the business timezone (+05:30),
-     * exactly as API guide v2.0 documents: ->toApiString() on any date (see App\Support\BusinessDate).
+     * Times are stored, computed and shown in Sri Lankan time (+05:30): ->toApiString() on any date
+     * (see App\Support\BusinessDate).
      */
     protected function configureDates(): void
     {

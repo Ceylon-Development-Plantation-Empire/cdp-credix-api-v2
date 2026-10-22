@@ -22,7 +22,8 @@ class PostProvisions extends Command
     {
         $date = CarbonImmutable::parse($this->option('date') ?? BusinessDate::today()->toDateString());
 
-        if ($date->isFuture()) {
+        // Compare calendar days, not instants (see RunEndOfDay).
+        if ($date->toDateString() > BusinessDate::todayImmutable()->toDateString()) {
             $this->error('The reporting date cannot be in the future.');
 
             return self::FAILURE;

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Support\BusinessDate;
 use App\Enums\DocumentStatus;
 use App\Models\Concerns\Audited;
 use App\Models\Concerns\HasPublicId;
@@ -69,14 +70,14 @@ class Document extends Model
      */
     public function isCurrent(?int $validityDays): bool
     {
-        if ($this->expires_on && $this->expires_on->isPast()) {
+        if ($this->expires_on && $this->expires_on->toDateString() < BusinessDate::today()->toDateString()) {
             return false;
         }
 
         if ($validityDays !== null) {
             $issued = $this->issued_on ?? $this->created_at;
 
-            return $issued->copy()->addDays($validityDays)->isFuture();
+            return $issued->copy()->addDays($validityDays)->toDateString() > BusinessDate::today()->toDateString();
         }
 
         return true;

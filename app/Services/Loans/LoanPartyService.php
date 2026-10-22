@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Loans;
 
+use App\Support\BusinessDate;
 use App\Enums\ClosureReason;
 use App\Enums\LoanActivityType;
 use App\Enums\LoanStatus;
@@ -246,7 +247,7 @@ class LoanPartyService
 
         $days = (int) Setting::value('loan.offer_validity_days', 30);
 
-        if ($loan->approved_at->copy()->addDays($days)->isPast()) {
+        if (BusinessDate::today()->greaterThan(BusinessDate::of($loan->approved_at)->addDays($days))) {
             throw new BusinessRuleException('OFFER_EXPIRED', "The offer was valid for {$days} days and has expired. Cancel the loan; a new application is needed.", 409);
         }
     }

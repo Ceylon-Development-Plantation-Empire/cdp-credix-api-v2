@@ -68,9 +68,9 @@ return [
             // DECISION: every table is InnoDB (row locks, foreign keys and transactions are required
             // by the ledger); never left to the server default.
             'engine' => 'InnoDB',
-            // The session works in UTC like the application, so TIMESTAMP columns hold true UTC
-            // whatever the server's own timezone is.
-            'timezone' => '+00:00',
+            // The session works in Sri Lankan time like the application (Asia/Colombo has no daylight
+            // saving, so the fixed offset is exact), whatever the server's own timezone is.
+            'timezone' => '+05:30',
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],

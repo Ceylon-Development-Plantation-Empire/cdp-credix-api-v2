@@ -87,7 +87,7 @@ class DocumentService
         $originalName = Str::limit(basename($file->getClientOriginalName()), 200, '');
 
         // Stored by the senior's FileUploadTrait on the private disk as uploads/documents/YYYY/MM/<ULID>.<ext>.
-        $path = $this->handleFileUpload($request, $field, null, 'documents/'.now()->format('Y/m'), (string) Str::ulid());
+        $path = $this->handleFileUpload($request, $field, null, 'documents/'.BusinessDate::today()->format('Y/m'), (string) Str::ulid());
 
         if ($path === null) {
             throw new BusinessRuleException('DOCUMENT_FILE_MISSING', 'No file was received.', 422);

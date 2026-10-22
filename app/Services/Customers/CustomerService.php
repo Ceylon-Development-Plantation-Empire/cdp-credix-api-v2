@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Customers;
 
+use App\Support\BusinessDate;
 use App\Enums\IdType;
 use App\Enums\KycStatus;
 use App\Exceptions\BusinessRuleException;
@@ -164,7 +165,7 @@ class CustomerService
             $data['gender'] = $nicGender;
         }
 
-        if ($dateOfBirth->diffInYears(now()) < self::MINIMUM_AGE) {
+        if ($dateOfBirth->diffInYears(BusinessDate::today()) < self::MINIMUM_AGE) {
             throw new BusinessRuleException('CUSTOMER_UNDER_AGE', 'A customer must be at least '.self::MINIMUM_AGE.' years old.', 422);
         }
 

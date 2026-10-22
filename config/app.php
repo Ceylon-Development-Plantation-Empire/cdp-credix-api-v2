@@ -69,10 +69,10 @@ return [
     |
     */
 
-    // DECISION: the application clock and every stored moment are UTC (finance standard: no DST or
-    // offset ambiguity in the ledger). APP_TIMEZONE is the BUSINESS timezone below: Sri Lankan
-    // calendar dates and the +05:30 times shown by the API (App\Support\BusinessDate).
-    'timezone' => 'UTC',
+    // DECISION: one time zone everywhere: Sri Lanka (Asia/Colombo, UTC+05:30, no daylight saving).
+    // The application clock, every stored moment, every calendar date and every time the API shows
+    // are Sri Lankan time (App\Support\BusinessDate says what "today" is).
+    'timezone' => env('APP_TIMEZONE', 'Asia/Colombo'),
 
     'business_timezone' => env('APP_TIMEZONE', 'Asia/Colombo'),
 

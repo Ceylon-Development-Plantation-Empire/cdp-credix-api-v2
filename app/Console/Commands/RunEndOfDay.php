@@ -21,7 +21,9 @@ class RunEndOfDay extends Command
             ? CarbonImmutable::createFromFormat('Y-m-d', $this->option('date'))->startOfDay()
             : BusinessDate::todayImmutable();
 
-        if ($date->isFuture()) {
+        // Compare calendar days: the business date is midnight UTC of the Colombo date, which is still
+        // "in the future" by the clock for the first hours of a Colombo day.
+        if ($date->toDateString() > BusinessDate::todayImmutable()->toDateString()) {
             $this->error('The business date cannot be in the future.');
 
             return self::FAILURE;

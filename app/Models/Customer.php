@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Support\BusinessDate;
 use App\Enums\EmploymentStatus;
 use App\Enums\Gender;
 use App\Enums\IdType;
@@ -243,7 +244,7 @@ class Customer extends Model
 
     public function age(): int
     {
-        return (int) $this->date_of_birth->diffInYears(now());
+        return (int) $this->date_of_birth->diffInYears(BusinessDate::today());
     }
 
     public function branch(): BelongsTo

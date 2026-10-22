@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Support\BusinessDate;
 use App\Enums\BorrowerType;
 use App\Enums\ClosureReason;
 use App\Enums\FinanceBasis;
@@ -38,7 +39,7 @@ class Loan extends Model
 
     public function generateReferenceNumber(): string
     {
-        $date = $this->created_at ? $this->created_at->format('ymd') : now()->format('ymd');
+        $date = $this->created_at ? BusinessDate::of($this->created_at)->format('ymd') : BusinessDate::today()->format('ymd');
         $prefix = self::REFERENCE_PREFIX.'-'.$date;
 
         $latest = static::withoutGlobalScopes()
@@ -57,7 +58,7 @@ class Loan extends Model
 
     public static function nextLoanNo(): string
     {
-        $date = now()->format('ymd');
+        $date = BusinessDate::today()->format('ymd');
         $prefix = 'CDP-'.$date;
 
         $latest = static::withoutGlobalScopes()
