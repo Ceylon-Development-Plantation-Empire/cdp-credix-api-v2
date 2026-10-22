@@ -21,6 +21,9 @@ class LoanActivityResource extends JsonResource
             'from_status' => $this->from_status?->value,
             'to_status' => $this->to_status?->value,
             'remarks' => $this->remarks,
+            // Additive (v2.1): a promise to pay on a recovery case.
+            'promised_amount' => $this->promised_amount !== null ? (string) $this->promised_amount : null,
+            'promised_date' => $this->promised_date?->toDateString(),
             'performed_by' => $this->whenLoaded('performer', fn () => $this->performer ? ['id' => $this->performer->id, 'name' => $this->performer->name] : null),
             'performed_at' => $this->performed_at->toApiString(),
         ];

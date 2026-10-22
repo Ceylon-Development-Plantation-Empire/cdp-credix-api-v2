@@ -11,6 +11,7 @@ use App\Http\Requests\Recovery\AssignRecoveryCaseRequest;
 use App\Http\Requests\Recovery\RecoveryActivityRequest;
 use App\Http\Resources\Loans\LoanActivityResource;
 use App\Http\Resources\Recovery\RecoveryCaseResource;
+use App\Models\LoanActivity;
 use App\Models\RecoveryCase;
 use App\Models\User;
 use App\Services\Recovery\RecoveryService;
@@ -34,7 +35,7 @@ class RecoveryCaseController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Recovery Case Index', only: ['index', 'show']),
+            new Middleware('permission:Recovery Case Index', only: ['index', 'show', 'activities']),
             new Middleware('permission:Recovery Case Assign', only: ['assign', 'moveToLegal']),
             new Middleware('permission:Recovery Case Work', only: ['addActivity']),
         ];
@@ -131,6 +132,31 @@ class RecoveryCaseController extends Controller implements HasMiddleware
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to update recovery case', $th);
+        }
+    }
+
+    /**
+     * GET /recovery-cases/{publicId}/activities: the calls, visits, promises to pay and notes on the case,
+     * newest first.
+     */
+    public function activities(string $publicId)
+    {
+        try {
+            $case = RecoveryCase::where('public_id', $publicId)->first();
+
+            if (! $case) {
+                return $this->notFound('Recovery case not found');
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Recovery activities retrieved successfully',
+                'data' => LoanActivityResource::collection(
+                    LoanActivity::with('performer')->where('recovery_case_id', $case->id)->latest('performed_at')->latest('id')->limit(200)->get()
+                ),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to retrieve recovery activities', $th);
         }
     }
 
