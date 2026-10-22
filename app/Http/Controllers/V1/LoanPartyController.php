@@ -7,6 +7,7 @@ namespace App\Http\Controllers\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Customers\VerifyOtpRequest;
 use App\Http\Requests\Loans\AddGuarantorRequest;
+use App\Http\Requests\Loans\LoanRemarksRequest;
 use App\Http\Requests\Loans\OptionalRemarksRequest;
 use App\Http\Resources\Loans\LoanPartyResource;
 use App\Http\Resources\Loans\LoanResource;
@@ -21,7 +22,7 @@ use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
 /**
- * Guarantors and the OTP confirmations of parties: guarantor consent and offer acceptance.
+ * Guarantors, their OTP consent, and the officer recording that a borrower accepted the offer (no code).
  * Codes are sent to the party's registered mobile and never appear in any response.
  */
 class LoanPartyController extends Controller implements HasMiddleware
@@ -36,7 +37,7 @@ class LoanPartyController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:Loan Guarantor Manage', only: ['addGuarantor', 'removeGuarantor', 'sendConsent', 'verifyConsent']),
-            new Middleware('permission:Loan Offer Manage', only: ['sendOffer', 'acceptOffer', 'declineOffer']),
+            new Middleware('permission:Loan Offer Manage', only: ['acceptOffer', 'holdOffer', 'declineOffer']),
         ];
     }
 
@@ -120,7 +121,7 @@ class LoanPartyController extends Controller implements HasMiddleware
         }
     }
 
-    public function sendOffer(Request $request, string $publicId, int $partyId)
+    public function acceptOffer(OptionalRemarksRequest $request, string $publicId, int $partyId)
     {
         try {
             [$loan, $party] = $this->find($publicId, $partyId);
@@ -129,24 +130,7 @@ class LoanPartyController extends Controller implements HasMiddleware
                 return $this->notFound('Party not found');
             }
 
-            $challenge = $this->parties->sendOffer($loan, $party, $request->user());
-
-            return $this->codeSent($challenge->destination, $challenge->expires_at);
-        } catch (\Throwable $th) {
-            return $this->serverError('Failed to send offer code', $th);
-        }
-    }
-
-    public function acceptOffer(VerifyOtpRequest $request, string $publicId, int $partyId)
-    {
-        try {
-            [$loan, $party] = $this->find($publicId, $partyId);
-
-            if (! $party) {
-                return $this->notFound('Party not found');
-            }
-
-            $loan = $this->parties->acceptOffer($loan, $party, $request->validated('code'), $request->user());
+            $loan = $this->parties->acceptOffer($loan, $party, $request->validated()['remarks'] ?? null, $request->user());
 
             return response()->json([
                 'status' => 'success',
@@ -158,10 +142,31 @@ class LoanPartyController extends Controller implements HasMiddleware
         }
     }
 
-    public function declineOffer(OptionalRemarksRequest $request, string $publicId)
+    public function holdOffer(LoanRemarksRequest $request, string $publicId)
     {
         try {
-            $remarks = $request->validated()['remarks'] ?? null;
+            $loan = Loan::where('public_id', $publicId)->first();
+
+            if (! $loan) {
+                return $this->notFound('Loan not found');
+            }
+
+            $loan = $this->parties->holdOffer($loan, $request->validated('remarks'), $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Offer put on hold',
+                'data' => new LoanResource($loan->load(['customer', 'borrowerGroup', 'product', 'branch'])),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to put the offer on hold', $th);
+        }
+    }
+
+    public function declineOffer(LoanRemarksRequest $request, string $publicId)
+    {
+        try {
+            $remarks = $request->validated('remarks');
             $loan = Loan::where('public_id', $publicId)->first();
 
             if (! $loan) {

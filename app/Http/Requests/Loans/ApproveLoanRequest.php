@@ -23,7 +23,13 @@ class ApproveLoanRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'approved_amount' => ['nullable', 'decimal:0,2', 'gt:0', 'max:9999999999999'],
+            // The approver decides: an amount, or a percentage of what was asked for, and the term.
+            'approved_amount' => ['nullable', 'decimal:0,2', 'gt:0', 'max:9999999999999', 'prohibits:approved_percent'],
+            // Up to 100 normally; above that (and the other exceptions) only as a special approval.
+            'approved_percent' => ['nullable', 'decimal:0,2', 'gt:0', 'max:1000'],
+            'tenure' => ['nullable', 'integer', 'min:1', 'max:600'],
+            // One-off exception for this application: above the request or outside the product's limits.
+            'special_approval' => ['sometimes', 'boolean'],
             'rate' => ['nullable', 'decimal:0,4', 'min:0', 'max:100'],
             'members' => ['sometimes', 'array', 'max:100'],
             'members.*.customer_public_id' => ['required', 'string', 'ulid', 'distinct'],

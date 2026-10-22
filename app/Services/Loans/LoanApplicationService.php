@@ -481,7 +481,7 @@ class LoanApplicationService
     /**
      * @param  array<string, mixed>  $terms
      */
-    protected function assertTenure(array $terms, int $tenure): void
+    public function assertTenure(array $terms, int $tenure): void
     {
         if ($tenure < $terms['min_tenure'] || $tenure > $terms['max_tenure']) {
             throw new BusinessRuleException('TENURE_OUT_OF_PRODUCT_LIMITS', "The tenure must be between {$terms['min_tenure']} and {$terms['max_tenure']} installments.", 422);

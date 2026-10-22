@@ -59,7 +59,7 @@ function loanToApproved($test, string $id, array $body = []): void
 }
 
 /**
- * Every borrowing party reads back the code sent to their phone.
+ * The officer records that every borrowing party accepted the offer (no code is involved).
  */
 function loanAcceptOffer($test, string $id): void
 {
@@ -68,8 +68,7 @@ function loanAcceptOffer($test, string $id): void
         ->where('role', '!=', 'guarantor');
 
     foreach ($parties as $party) {
-        $test->actingAs($test->officer, 'api')->postJson("/api/v1/loans/{$id}/parties/{$party['id']}/offer/send-otp")->assertOk();
-        $test->actingAs($test->officer, 'api')->postJson("/api/v1/loans/{$id}/parties/{$party['id']}/offer/accept", ['code' => $test->sms->lastCode()])->assertOk();
+        $test->actingAs($test->officer, 'api')->postJson("/api/v1/loans/{$id}/parties/{$party['id']}/offer/accept")->assertOk();
     }
 }
 
@@ -262,22 +261,97 @@ describe('workflow', function () {
         $this->actingAs($this->officer, 'api')->putJson("/api/v1/loans/{$id}", ['tenure' => 18])->assertStatus(409)->assertJsonPath('code', 'LOAN_NOT_EDITABLE');
     });
 
-    it('needs every borrower to accept the offer by OTP', function () {
+    it('records the borrower acceptance without sending any code', function () {
         $id = loanApply($this)->json('data.public_id');
         loanToApproved($this, $id);
 
         $partyId = LoanParty::where('role', 'borrower')->value('id');
-        $sent = $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/parties/{$partyId}/offer/send-otp")->assertOk();
-        $code = $this->sms->lastCode();
+        $this->sms->sent = [];
 
-        expect($sent->getContent())->not->toContain($code)
-            ->and($this->sms->sent[0]['message'])->toContain('150000.00');
-
-        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/parties/{$partyId}/offer/accept", ['code' => $code === '000000' ? '111111' : '000000'])
-            ->assertStatus(422)->assertJsonPath('code', 'OTP_INVALID');
-
-        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/parties/{$partyId}/offer/accept", ['code' => $code])
+        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/parties/{$partyId}/offer/accept", ['remarks' => 'Signed the offer letter at the branch'])
             ->assertOk()->assertJsonPath('data.status', 'accepted');
+
+        expect($this->sms->sent)->toBe([])
+            ->and(LoanParty::find($partyId)->consented_at)->not->toBeNull();
+
+        $this->actingAs($this->officer, 'api')->getJson("/api/v1/loans/{$id}/activities")->assertOk()
+            ->assertJsonFragment(['remarks' => 'Offer accepted by '.LoanParty::find($partyId)->customer->customer_no.': Signed the offer letter at the branch']);
+
+        // A borrower accepts once.
+        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/parties/{$partyId}/offer/accept")->assertStatus(409);
+    });
+
+    it('lets the approver lower the amount, by percentage, and the term', function () {
+        $id = loanApply($this)->json('data.public_id');
+        loanToVerified($this, $id);
+
+        // More than asked for, or a longer term than asked for, is not what the customer applied for.
+        $this->actingAs($this->approver, 'api')->postJson("/api/v1/loans/{$id}/approve", ['tenure' => 36])->assertStatus(422)->assertJsonPath('code', 'APPROVED_TENURE_ABOVE_REQUESTED');
+        $this->actingAs($this->approver, 'api')->postJson("/api/v1/loans/{$id}/approve", ['approved_amount' => '100000', 'approved_percent' => '50'])->assertStatus(422);
+
+        $this->actingAs($this->approver, 'api')->postJson("/api/v1/loans/{$id}/approve", ['approved_percent' => '60', 'tenure' => 12, 'remarks' => 'Shorter term, smaller amount'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'approved')
+            ->assertJsonPath('data.terms.approved_amount', '90000.00')
+            ->assertJsonPath('data.terms.requested_amount', '150000.00')
+            ->assertJsonPath('data.terms.tenure', 12);
+    });
+
+    it('allows more than was asked for, or outside the product limits, only as a special approval for that application', function () {
+        $id = loanApply($this)->json('data.public_id');
+        loanToVerified($this, $id);
+
+        // Without the flag nothing changes: the request is the ceiling.
+        $this->actingAs($this->approver, 'api')->postJson("/api/v1/loans/{$id}/approve", ['approved_amount' => '180000'])->assertStatus(422)->assertJsonPath('code', 'APPROVED_ABOVE_REQUESTED');
+
+        // The flag needs the permission and a written reason.
+        $this->actingAs($this->approver, 'api')->postJson("/api/v1/loans/{$id}/approve", ['approved_amount' => '180000', 'special_approval' => true, 'remarks' => 'Owner asked for more by phone'])
+            ->assertStatus(403)->assertJsonPath('code', 'SPECIAL_APPROVAL_NOT_ALLOWED');
+
+        $special = LoanFixtures::approver($this->branchId, '500000', 'Loan Index', 'Loan Approve Special');
+        $this->actingAs($special, 'api')->postJson("/api/v1/loans/{$id}/approve", ['approved_amount' => '180000', 'special_approval' => true])
+            ->assertStatus(422)->assertJsonPath('code', 'SPECIAL_APPROVAL_REASON_REQUIRED');
+
+        $this->actingAs($special, 'api')->postJson("/api/v1/loans/{$id}/approve", ['approved_amount' => '180000', 'tenure' => 36, 'special_approval' => true, 'remarks' => 'Owner asked for more by phone'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'approved')
+            ->assertJsonPath('data.terms.requested_amount', '150000.00')
+            ->assertJsonPath('data.terms.approved_amount', '180000.00')
+            ->assertJsonPath('data.terms.tenure', 36);
+
+        $this->actingAs($this->officer, 'api')->getJson("/api/v1/loans/{$id}/activities")->assertOk()->assertJsonFragment(['remarks' => 'Owner asked for more by phone']);
+
+        // The next application is checked as usual.
+        $other = LoanFixtures::customer($this->branchId);
+        LoanFixtures::income($other, '150000');
+        $next = loanApply($this, ['customer_public_id' => $other->public_id])->json('data.public_id');
+        loanToVerified($this, $next);
+        $this->actingAs($special, 'api')->postJson("/api/v1/loans/{$next}/approve", ['approved_amount' => '180000'])->assertStatus(422)->assertJsonPath('code', 'APPROVED_ABOVE_REQUESTED');
+    });
+
+    it('records what the customer answers after approval: accept, put on hold or decline, each with a reason', function () {
+        $id = loanApply($this)->json('data.public_id');
+        loanToApproved($this, $id);
+
+        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/offer/hold")->assertStatus(422);
+        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/offer/hold", ['remarks' => 'Wants to discuss with the family first'])
+            ->assertOk()->assertJsonPath('data.status', 'approved')->assertJsonPath('data.offer.on_hold', true)->assertJsonPath('data.offer.remarks', 'Wants to discuss with the family first');
+
+        // Accepting later clears the hold.
+        $partyId = LoanParty::where('role', 'borrower')->value('id');
+        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/parties/{$partyId}/offer/accept")->assertOk()->assertJsonPath('data.status', 'accepted');
+        $this->actingAs($this->officer, 'api')->getJson("/api/v1/loans/{$id}")->assertJsonPath('data.offer.on_hold', false);
+    });
+
+    it('cancels the loan when the customer declines, and needs the reason', function () {
+        $id = loanApply($this)->json('data.public_id');
+        loanToApproved($this, $id);
+
+        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/offer/decline")->assertStatus(422);
+        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/offer/decline", ['remarks' => 'Found a cheaper loan elsewhere'])
+            ->assertOk()->assertJsonPath('data.status', 'cancelled')->assertJsonPath('data.offer.remarks', 'Found a cheaper loan elsewhere');
+
+        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/offer/hold", ['remarks' => 'Too late now'])->assertStatus(409)->assertJsonPath('code', 'OFFER_NOT_OPEN');
     });
 
     it('does not disburse without the verified agreement or an idempotency key', function () {
@@ -403,7 +477,7 @@ describe('collateral', function () {
             ->assertOk()->assertJsonPath('data.status', 'verified');
     });
 
-    it('refuses verification when the collateral does not cover the loan', function () {
+    it('does not limit the loan by what the collateral is worth: the approver decides the amount', function () {
         $id = goldApply($this, '250000');
         $collateralId = addGold($this, $id)->json('data.public_id');
         LoanFixtures::verifiedDocument(Collateral::where('public_id', $collateralId)->first(), 'gold-valuation-slip');
@@ -412,8 +486,9 @@ describe('collateral', function () {
         $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/submit")->assertOk();
         $this->actingAs($this->reviewer, 'api')->postJson("/api/v1/loans/{$id}/start-review")->assertOk();
 
-        $response = $this->actingAs($this->verifier, 'api')->postJson("/api/v1/loans/{$id}/verify")->assertStatus(422);
-        expect(problemCodes($response))->toBe(['COLLATERAL_COVERAGE_SHORT']);
+        // The gold secures far less than the 250 000 asked for, and that is not a reason to refuse.
+        $this->actingAs($this->verifier, 'api')->postJson("/api/v1/loans/{$id}/verify")->assertOk()->assertJsonPath('data.status', 'verified');
+        $this->actingAs($this->approver, 'api')->postJson("/api/v1/loans/{$id}/approve", ['approved_amount' => '250000'])->assertOk()->assertJsonPath('data.status', 'approved');
     });
 
     it('disburses a gold loan only after the gold is in custody', function () {

@@ -47,6 +47,12 @@ class LoanResource extends JsonResource
                 'existing_obligations' => $this->existing_obligations,
                 'dsr_percent' => $this->dsr_percent,
             ],
+            // What the customer answered after approval: on hold (with the officer's note of why) or not.
+            'offer' => [
+                'on_hold' => $this->offer_on_hold_at !== null,
+                'on_hold_at' => $this->offer_on_hold_at?->toApiString(),
+                'remarks' => $this->offer_remarks,
+            ],
             'dates' => [
                 'submitted_at' => $this->submitted_at?->toApiString(),
                 'approved_at' => $this->approved_at?->toApiString(),

@@ -41,7 +41,6 @@ class LoanReviewService
         protected AffordabilityService $affordability,
         protected LoanPartyService $parties,
         protected LoanChecklistService $checklist,
-        protected CollateralService $collaterals,
     ) {}
 
     public function startReview(Loan $loan, User $by): Loan
@@ -103,33 +102,69 @@ class LoanReviewService
             $terms = $this->pricing->termsOf($loan);
             $rate = BigDecimal::of($data['rate'] ?? $loan->rate);
 
-            if ($rate->isLessThan($terms['min_rate']) || $rate->isGreaterThan($terms['max_rate'])) {
+            // Special approval: this one application may go above what was asked for or outside the product's
+            // limits. Only people holding the permission, and always with a written reason; the next application is
+            // checked as usual.
+            $special = (bool) ($data['special_approval'] ?? false);
+
+            if ($special) {
+                if (! $by->can('Loan Approve Special')) {
+                    throw new BusinessRuleException('SPECIAL_APPROVAL_NOT_ALLOWED', 'You do not have the permission to approve outside the normal limits.', 403);
+                }
+
+                if (blank($data['remarks'] ?? null)) {
+                    throw new BusinessRuleException('SPECIAL_APPROVAL_REASON_REQUIRED', 'Write the reason for the special approval.', 422);
+                }
+            }
+
+            if (! $special && ($rate->isLessThan($terms['min_rate']) || $rate->isGreaterThan($terms['max_rate']))) {
                 throw new BusinessRuleException('RATE_OUT_OF_PRODUCT_LIMITS', "The rate must be between {$terms['min_rate']} and {$terms['max_rate']}% p.a.", 422);
             }
 
             $borrowingLoans = $this->applications->borrowingLoans($loan);
-            $amounts = $this->approvedAmounts($loan, $borrowingLoans->all(), $data, $terms);
+            $amounts = $this->approvedAmounts($loan, $borrowingLoans->all(), $data, $terms, $special);
             $total = Money::sum($amounts);
 
+            // The approver may shorten the term (24 months asked, 12 approved); longer than asked for, or outside the
+            // product's band, only as a special approval.
+            $requestedTenure = (int) $loan->tenure;
+            $tenure = isset($data['tenure']) ? (int) $data['tenure'] : null;
+
+            if ($tenure !== null && ! $special) {
+                $this->applications->assertTenure($terms, $tenure);
+
+                if ($tenure > $requestedTenure) {
+                    throw new BusinessRuleException('APPROVED_TENURE_ABOVE_REQUESTED', 'The approved term cannot be longer than the term applied for.', 422);
+                }
+            }
+
             $this->assertApprovalAuthority($by, $total);
-            $this->assertReady($loan, $borrowingLoans, $amounts, (string) $rate);
+            $this->assertReady($loan, $borrowingLoans, $amounts, (string) $rate, $tenure);
 
             foreach ($borrowingLoans as $each) {
                 $pricing = $this->pricing->price($each, $amounts[$each->id], $rate);
-                $each->forceFill(['approved_amount' => $amounts[$each->id], 'rate' => (string) $rate] + $pricing->columns())->save();
+                $each->forceFill(['approved_amount' => $amounts[$each->id], 'rate' => (string) $rate] + ($tenure !== null ? ['tenure' => $tenure] : []) + $pricing->columns())->save();
             }
 
             if ($loan->isGroupFacility()) {
                 $loan->rate = (string) $rate;
+                if ($tenure !== null) {
+                    $loan->tenure = $tenure;
+                }
                 $this->applications->sumMemberColumns($loan, $borrowingLoans);
                 $loan->save();
             }
 
-            $this->logActivity('APPROVE', 'Loan', "Approved {$loan->application_no} for {$total}");
+            $exceptions = $special ? ' (special approval)' : '';
+            $termNote = $tenure !== null && $tenure !== $requestedTenure ? " over {$tenure} installments (applied for {$requestedTenure})" : '';
+            $this->logActivity('APPROVE', 'Loan', "Approved {$loan->application_no} for {$total}{$termNote}{$exceptions}");
 
             return $this->workflow->transition($loan, LoanStatus::Approved, $by, $data['remarks'] ?? null, [
                 'approved_amount' => (string) $total,
                 'rate' => (string) $rate,
+                'tenure' => $tenure ?? $requestedTenure,
+                'requested_tenure' => $requestedTenure,
+                'special_approval' => $special,
             ]);
         }, attempts: 3);
     }
@@ -159,9 +194,10 @@ class LoanReviewService
      *
      * @param  Collection<int, Loan>  $borrowingLoans  The loans carrying borrowers; their assessment columns are filled in.
      * @param  array<int, string>  $amounts  borrowing loan id => amount
+     * @param  int|null  $tenure  The term being approved when the approver changes it (guarantors agreed to the term applied for).
      * @return list<array{code: string, message: string, customer_no?: string}>
      */
-    public function problems(Loan $loan, Collection $borrowingLoans, array $amounts, string $rate): array
+    public function problems(Loan $loan, Collection $borrowingLoans, array $amounts, string $rate, ?int $tenure = null): array
     {
         $terms = $this->pricing->termsOf($loan);
         $frequency = RepaymentFrequency::from($terms['repayment_frequency']);
@@ -183,7 +219,7 @@ class LoanReviewService
 
             // L-1, L-2 (borrowers) and G-1, G-3, G-5 (guarantors).
             $personal = $party->role->isBorrowing()
-                ? $this->eligibility->borrowerProblems($customer, $loan->tenure, $frequency, true, $loanIds)
+                ? $this->eligibility->borrowerProblems($customer, $tenure ?? $loan->tenure, $frequency, true, $loanIds)
                 : $this->guarantorProblems($loan, $party);
 
             foreach ($personal as $problem) {
@@ -208,7 +244,13 @@ class LoanReviewService
 
         array_push($problems, ...$this->collateralProblems($loan, $terms, Money::sum($amounts)));
 
-        // Affordability, priced on the amounts being decided.
+        // Affordability, priced on the amounts and the term being decided.
+        if ($tenure !== null) {
+            foreach ($borrowingLoans as $each) {
+                $each->tenure = $tenure;
+            }
+        }
+
         foreach ($borrowingLoans as $each) {
             if (! isset($amounts[$each->id]) || ! $this->affordability->applies($each)) {
                 continue;
@@ -231,9 +273,9 @@ class LoanReviewService
      * @param  Collection<int, Loan>  $borrowingLoans
      * @param  array<int, string>  $amounts
      */
-    protected function assertReady(Loan $loan, Collection $borrowingLoans, array $amounts, string $rate): void
+    protected function assertReady(Loan $loan, Collection $borrowingLoans, array $amounts, string $rate, ?int $tenure = null): void
     {
-        $problems = $this->problems($loan, $borrowingLoans, $amounts, $rate);
+        $problems = $this->problems($loan, $borrowingLoans, $amounts, $rate, $tenure);
 
         if ($problems) {
             throw new BusinessRuleException('LOAN_NOT_READY', 'The loan is not ready for this step. See the problems listed.', 422, ['problems' => $problems]);
@@ -263,8 +305,8 @@ class LoanReviewService
     }
 
     /**
-     * Every recorded collateral verified, every mandatory type present, and (when the product
-     * requires collateral) the eligible amount covers the loan.
+     * Every recorded collateral verified and every mandatory type present. How much the collateral is
+     * worth against the loan is not a condition: the approver decides the amount.
      *
      * @param  array<string, mixed>  $terms
      * @return list<array{code: string, message: string}>
@@ -284,27 +326,20 @@ class LoanReviewService
             }
         }
 
-        if ($terms['requires_collateral']) {
-            $coverage = $this->collaterals->coverage($loan);
-
-            if ($coverage->isLessThan($amount)) {
-                $problems[] = ['code' => 'COLLATERAL_COVERAGE_SHORT', 'message' => "The verified collateral secures {$coverage}, less than the loan amount of {$amount}."];
-            }
-        }
-
         return $problems;
     }
 
     /**
-     * Approved amount per borrowing loan: as requested unless the approver lowers it. It can never
-     * be more than requested (the borrowers and guarantors did not ask for more).
+     * Approved amount per borrowing loan: as requested unless the approver types a lower amount or a
+     * percentage. It is never more than requested, unless the approver makes a special approval for this
+     * application. Nothing else limits it: how much collateral there is does not decide the amount.
      *
      * @param  list<Loan>  $borrowingLoans
      * @param  array<string, mixed>  $data
      * @param  array<string, mixed>  $terms
      * @return array<int, string>
      */
-    protected function approvedAmounts(Loan $loan, array $borrowingLoans, array $data, array $terms): array
+    protected function approvedAmounts(Loan $loan, array $borrowingLoans, array $data, array $terms, bool $special = false): array
     {
         $overrides = [];
 
@@ -317,16 +352,25 @@ class LoanReviewService
             $overrides[$loan->customer_id] = $data['approved_amount'];
         }
 
+        // A percentage of what was applied for, for the loan (or for every member of a group, unless an amount is given).
+        if (isset($data['approved_percent'])) {
+            foreach ($borrowingLoans as $each) {
+                $overrides[$each->customer_id] ??= (string) Money::percentOf($each->requested_amount, $data['approved_percent']);
+            }
+        }
+
         $amounts = [];
 
         foreach ($borrowingLoans as $each) {
             $amount = Money::of($overrides[$each->customer_id] ?? $each->requested_amount);
 
-            if ($amount->isGreaterThan($each->requested_amount)) {
-                throw new BusinessRuleException('APPROVED_ABOVE_REQUESTED', 'The approved amount cannot be more than the amount applied for.', 422);
-            }
+            if (! $special) {
+                if ($amount->isGreaterThan($each->requested_amount)) {
+                    throw new BusinessRuleException('APPROVED_ABOVE_REQUESTED', 'The approved amount cannot be more than the amount applied for. A special approval is needed for that.', 422);
+                }
 
-            $this->applications->assertAmount($terms, $amount);
+                $this->applications->assertAmount($terms, $amount);
+            }
             $amounts[$each->id] = (string) $amount;
         }
 

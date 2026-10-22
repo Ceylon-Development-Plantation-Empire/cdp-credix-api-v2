@@ -22,9 +22,9 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Guarantors (rules G-1 … G-6, GR-7) and the two OTP confirmations made by parties:
- * - a guarantor agrees to guarantee the application (before verification);
- * - every borrower accepts the approved offer (before disbursement).
+ * Guarantors (rules G-1 … G-6, GR-7), their OTP consent, and the borrowers' acceptance of the offer:
+ * - a guarantor agrees to guarantee the application by OTP (before verification);
+ * - every borrower accepts the approved offer (before disbursement), recorded by the officer without a code.
  *
  * Each confirmation stores a hash of the terms that were confirmed. If those terms change
  * afterwards the confirmation no longer matches and has to be given again.
@@ -149,44 +149,29 @@ class LoanPartyService
 
     /* Offer acceptance */
 
-    public function sendOffer(Loan $loan, LoanParty $party, User $by): OtpChallenge
-    {
-        $this->assertOfferOpen($loan);
-        $this->assertRole($party, guarantor: false);
-
-        $terms = $this->offerTerms($party->loan);
-
-        $message = "CDP Capital: :code is your code to ACCEPT loan {$loan->application_no}: Rs {$terms['approved_amount']}, "
-            ."{$terms['tenure']} installments of Rs {$terms['installment_amount']}. Valid :minutes minutes. Never share this code.";
-
-        return $this->otp->issue(OtpPurpose::LoanAcceptance, $party, $party->customer->phone_primary, $message, $terms, $this->hash($terms), $by);
-    }
-
     /**
-     * The borrower reads back the code. Once every borrower of the loan (every member, for a
-     * group) has accepted, the loan moves to accepted.
+     * The borrower agreed to the approved offer and the officer records it. No code is sent for this:
+     * the customer's own OTP confirmation is the review link (LoanReviewLinkService), once per person;
+     * here the officer only notes how the customer agreed (a visit, a call, a signed copy).
+     *
+     * Once every borrower of the loan (every member, for a group) has accepted, the loan moves to
+     * accepted. The terms are hashed, so changing them afterwards cancels the acceptance (rule L-7).
      */
-    public function acceptOffer(Loan $loan, LoanParty $party, string $code, User $by): Loan
-    {
-        return $this->accept($loan, $party, $this->pendingChallenge($party, OtpPurpose::LoanAcceptance), $code, $by, 'at the branch');
-    }
-
-    protected function accept(Loan $loan, LoanParty $party, OtpChallenge $challenge, string $code, ?User $by, string $how): Loan
+    public function acceptOffer(Loan $loan, LoanParty $party, ?string $remarks, User $by): Loan
     {
         $this->assertOfferOpen($loan);
         $this->assertRole($party, guarantor: false);
 
         $hash = $this->hash($this->offerTerms($party->loan));
-
-        // Outside a transaction on purpose: a wrong code must stay counted (OtpService::verify).
-        $this->otp->verify($challenge, $code, $hash);
+        $how = $remarks !== null && trim($remarks) !== '' ? ': '.trim($remarks) : '';
 
         return DB::transaction(function () use ($loan, $party, $hash, $by, $how) {
             $loan = Loan::withoutGlobalScope('branch')->whereKey($loan->id)->lockForUpdate()->firstOrFail();
             $this->assertOfferOpen($loan);
 
             $party->forceFill(['consented_at' => now(), 'consent_hash' => $hash])->save();
-            $this->workflow->record($loan, LoanActivityType::Update, $by, "Offer accepted by {$party->customer->customer_no} (OTP {$how})");
+            $loan->forceFill(['offer_on_hold_at' => null, 'offer_remarks' => null])->save();
+            $this->workflow->record($loan, LoanActivityType::Update, $by, "Offer accepted by {$party->customer->customer_no}{$how}");
 
             $waiting = LoanParty::whereIn('loan_id', $loan->idsWithMemberLoans())
                 ->whereIn('role', PartyRole::borrowingValues())
@@ -198,7 +183,24 @@ class LoanPartyService
         });
     }
 
-    public function declineOffer(Loan $loan, ?string $remarks, User $by): Loan
+    /**
+     * The customer asked to wait. The loan stays approved (the offer is still valid until it expires)
+     * and shows as on hold with the reason; saying it again replaces the note, and every call is on the timeline.
+     */
+    public function holdOffer(Loan $loan, string $remarks, User $by): Loan
+    {
+        return DB::transaction(function () use ($loan, $remarks, $by) {
+            $loan = $this->workflow->lock($loan);
+            $this->assertOfferOpen($loan);
+
+            $loan->forceFill(['offer_on_hold_at' => now(), 'offer_remarks' => $remarks])->save();
+            $this->workflow->record($loan, LoanActivityType::Update, $by, "Offer put on hold by the customer: {$remarks}");
+
+            return $loan;
+        });
+    }
+
+    public function declineOffer(Loan $loan, string $remarks, User $by): Loan
     {
         return DB::transaction(function () use ($loan, $remarks, $by) {
             $loan = $this->workflow->lock($loan);
@@ -207,7 +209,9 @@ class LoanPartyService
                 throw new BusinessRuleException('OFFER_NOT_OPEN', 'There is no open offer on this loan.', 409);
             }
 
-            return $this->workflow->transition($loan, LoanStatus::Cancelled, $by, $remarks ?? 'Customer declined the offer', [], ClosureReason::Declined);
+            $loan->forceFill(['offer_on_hold_at' => null, 'offer_remarks' => $remarks])->save();
+
+            return $this->workflow->transition($loan, LoanStatus::Cancelled, $by, "Customer declined the offer: {$remarks}", [], ClosureReason::Declined);
         });
     }
 
