@@ -106,6 +106,7 @@ describe('the customer on the link', function () {
 
         $this->actingAs($this->officer, 'api')->getJson("/api/v1/loans/{$this->loanId}/review")
             ->assertOk()->assertJsonPath('data.all_confirmed', true)->assertJsonPath('data.customers.0.confirmed_via', 'link');
+        expect($this->officer->notifications()->where('data->type', 'LOAN_REVIEW_CONFIRMED')->count())->toBe(1);
 
         // One confirmation only, and a second code is never needed.
         $this->postJson("/api/v1/public/loan-review/{$token}/confirm", ['otp' => $code, 'declaration_accepted' => true])
@@ -123,7 +124,7 @@ describe('the customer on the link', function () {
         $this->postJson("/api/v1/public/loan-review/{$token}/request-otp")->assertStatus(429);
     });
 
-    it('does not open for a wrong, expired or replaced link', function () {
+    it('does not open for a wrong or replaced link', function () {
         $this->getJson('/api/v1/public/loan-review/'.str_repeat('a', 48))->assertNotFound();
         $this->getJson('/api/v1/public/loan-review/short')->assertNotFound();
 
@@ -131,10 +132,26 @@ describe('the customer on the link', function () {
         $second = reviewLink($this);
         expect($second)->not->toBe($first);
         $this->getJson("/api/v1/public/loan-review/{$first}")->assertNotFound();
+        $this->getJson("/api/v1/public/loan-review/{$second}")->assertOk();
+    });
 
-        LoanParty::where('role', 'borrower')->first()->forceFill(['review_expires_at' => now()->subMinute()])->save();
-        $this->getJson("/api/v1/public/loan-review/{$second}")->assertOk()->assertJsonPath('data.status', 'expired');
-        $this->postJson("/api/v1/public/loan-review/{$second}/request-otp")->assertStatus(410)->assertJsonPath('code', 'REVIEW_LINK_EXPIRED');
+    it('is spent by opens, not by time', function () {
+        Setting::where('key', 'loan_review.max_opens')->firstOrFail()->forceFill(['value' => '2'])->save();
+        $token = reviewLink($this);
+
+        $this->actingAs($this->officer, 'api')->getJson("/api/v1/loans/{$this->loanId}/review")->assertJsonPath('data.customers.0.opens_left', 2);
+
+        $this->getJson("/api/v1/public/loan-review/{$token}")->assertOk()->assertJsonPath('data.opens_left', 1);
+        $this->getJson("/api/v1/public/loan-review/{$token}")->assertOk()->assertJsonPath('data.opens_left', 0);
+        $this->getJson("/api/v1/public/loan-review/{$token}")->assertStatus(410)->assertJsonPath('code', 'REVIEW_LINK_EXPIRED');
+
+        // Someone already on the page can still ask for the code.
+        $this->postJson("/api/v1/public/loan-review/{$token}/request-otp")->assertOk();
+
+        // A new link starts the count again; and a time passing changes nothing.
+        $this->travel(30)->days();
+        $fresh = reviewLink($this);
+        $this->getJson("/api/v1/public/loan-review/{$fresh}")->assertOk()->assertJsonPath('data.opens_left', 1);
     });
 
     it('asks for the confirmation again when the details change afterwards', function () {
@@ -177,12 +194,23 @@ describe('corrections', function () {
 
         $this->getJson("/api/v1/public/loan-review/{$token}")->assertJsonPath('data.corrections.0.status', 'pending_review');
 
+        // The officers see it as a system notification, with references only.
+        $alert = $this->officer->notifications()->where('data->type', 'LOAN_CORRECTION_REQUESTED')->first();
+        expect($alert)->not->toBeNull()
+            ->and($alert->data['loan_public_id'])->toBe($this->loanId)
+            ->and($alert->data['field_name'])->toBe('occupation');
+
         $this->actingAs($this->officer, 'api')->getJson("/api/v1/loans/{$this->loanId}/review/corrections")
             ->assertOk()->assertJsonPath('data.0.field_name', 'occupation')->assertJsonPath('data.0.proposed_value', 'Shop owner')->assertJsonPath('data.0.status', 'pending_review');
 
         $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$this->loanId}/review/corrections/{$id}/resolve", ['outcome' => 'accepted'])->assertStatus(422);
+        $this->sms->sent = [];
         $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$this->loanId}/review/corrections/{$id}/resolve", ['outcome' => 'accepted', 'remarks' => 'Updated the occupation'])
-            ->assertOk()->assertJsonPath('data.status', 'accepted')->assertJsonPath('data.resolution_remarks', 'Updated the occupation');
+            ->assertOk()->assertJsonPath('data.status', 'accepted')->assertJsonPath('data.resolution_remarks', 'Updated the occupation')->assertJsonPath('data.new_link_sent', true);
+
+        // The customer gets a new link to read the corrected details; the old one is dead.
+        expect($this->sms->sent)->toHaveCount(1)->and($this->sms->sent[0]['message'])->toContain('/loan-review/')->and($this->sms->sent[0]['message'])->not->toContain($token);
+        $this->getJson("/api/v1/public/loan-review/{$token}")->assertNotFound();
 
         $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$this->loanId}/review/corrections/{$id}/resolve", ['outcome' => 'declined', 'remarks' => 'No, as it is'])
             ->assertStatus(409)->assertJsonPath('code', 'CORRECTION_ALREADY_ANSWERED');
@@ -204,6 +232,21 @@ describe('corrections', function () {
 });
 
 describe('officer assisted confirmation', function () {
+    it('shows the officer exactly what the customer sees, without using up an open', function () {
+        $customerId = LoanParty::where('role', 'borrower')->first()->customer->public_id;
+        $token = reviewLink($this);
+
+        $this->actingAs($this->officer, 'api')->getJson("/api/v1/loans/{$this->loanId}/review/customers/{$customerId}")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'pending')
+            ->assertJsonPath('data.opens_left', 2)
+            ->assertJsonPath('data.details.loan.reference', $this->loan->application_no)
+            ->assertJsonPath('data.declaration_text', fn ($v) => str_contains($v, 'I confirm'));
+
+        expect(LoanParty::where('role', 'borrower')->first()->review_open_count)->toBe(0)->and($token)->not->toBe('');
+        $this->actingAs($this->officer, 'api')->getJson("/api/v1/loans/{$this->loanId}/review/customers/01JZZZZZZZZZZZZZZZZZZZZZZZ")->assertStatus(404);
+    });
+
     it('confirms with the code the customer reads out, and records why', function () {
         $url = "/api/v1/loans/{$this->loanId}/review/customers/".LoanParty::where('role', 'borrower')->first()->customer->public_id;
 

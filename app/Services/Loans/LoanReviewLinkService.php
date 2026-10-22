@@ -80,7 +80,8 @@ class LoanReviewLinkService
                 'status' => $this->statusOf($party),
                 'customer_phone_masked' => PhoneNormalizer::mask($party->customer->phone_primary),
                 'link_sent_at' => $party->review_sent_at?->toApiString(),
-                'link_expires_at' => $party->review_expires_at?->toApiString(),
+                'link_expires_at' => null,
+                'opens_left' => max(0, $this->maxOpens() - $party->review_open_count),
                 'viewed_at' => $party->review_viewed_at?->toApiString(),
                 'confirmed_at' => $party->review_confirmed_at?->toApiString(),
                 'confirmed_via' => $party->review_confirmed_via,
@@ -108,7 +109,6 @@ class LoanReviewLinkService
     {
         $this->assertOpen($loan);
 
-        $hours = (int) Setting::value('loan_review.link_validity_hours', 48);
         $parties = $this->recipients($loan)
             ->when($customerPublicIds, fn (Collection $all) => $all->filter(fn (LoanParty $p) => in_array($p->customer->public_id, $customerPublicIds, true)));
 
@@ -116,7 +116,7 @@ class LoanReviewLinkService
             throw new BusinessRuleException('NO_REVIEW_RECIPIENTS', 'There is nobody to send the review link to on this loan.', 422);
         }
 
-        return $parties->map(function (LoanParty $party) use ($loan, $hours, $by) {
+        return $parties->map(function (LoanParty $party) use ($by) {
             $customer = $party->customer;
             $base = ['customer_id' => $customer->public_id, 'full_name' => $customer->full_name, 'customer_phone_masked' => PhoneNormalizer::mask($customer->phone_primary)];
 
@@ -134,7 +134,9 @@ class LoanReviewLinkService
             $party->forceFill([
                 'review_token_hash' => $this->hashToken($token),
                 'review_sent_at' => now(),
-                'review_expires_at' => now()->addHours($hours),
+                // The link is spent by opens, not by time: each load of the page counts (loan_review.max_opens).
+                'review_expires_at' => null,
+                'review_open_count' => 0,
                 'review_viewed_at' => null,
                 'review_confirmed_at' => null,
                 'review_hash' => null,
@@ -146,7 +148,6 @@ class LoanReviewLinkService
             $log = $this->notifications->notifyCustomer(NotificationEvent::LoanReviewLink, $customer, [
                 'application_no' => $party->loan->application_no,
                 'review_link' => $link,
-                'valid_hours' => $hours,
             ], $party->loan);
 
             $sent = in_array($log->status, [NotificationStatus::Queued, NotificationStatus::Sent], true);
@@ -156,7 +157,7 @@ class LoanReviewLinkService
                 'status' => 'pending',
                 'link_sent' => true,
                 'sms_sent' => $sent,
-                'link_expires_at' => $party->review_expires_at->toApiString(),
+                'opens_left' => $this->maxOpens(),
                 // Only on a developer machine: the link otherwise exists only in the customer's SMS.
                 'dev_link' => app()->environment('local', 'testing') ? $link : null,
             ];
@@ -276,7 +277,18 @@ class LoanReviewLinkService
 
         $this->workflow->record($loan, LoanActivityType::CorrectionResolved, $by, $remarks, ['request_id' => $request->id, 'outcome' => $outcome]);
 
-        return $this->corrections($loan)->firstWhere('id', $requestId);
+        // The officer corrected the record: once this customer has no other request waiting, they get a new link
+        // to read the corrected details and confirm (the old link and any waiting code stop working).
+        $customerPublicId = $request->metadata['customer_public_id'] ?? null;
+        $newLink = false;
+
+        if ($outcome === 'accepted' && $customerPublicId && in_array($loan->status, self::OPEN_STATUSES, true)
+            && $this->corrections($loan)->where('customer.public_id', $customerPublicId)->where('status', 'pending_review')->isEmpty()) {
+            $sent = collect($this->sendLinks($loan, [$customerPublicId], $by))->firstWhere('customer_id', $customerPublicId);
+            $newLink = (bool) ($sent['link_sent'] ?? false);
+        }
+
+        return $this->corrections($loan)->firstWhere('id', $requestId) + ['new_link_sent' => $newLink];
     }
 
     /* Public: the customer on their link */
@@ -295,21 +307,54 @@ class LoanReviewLinkService
             throw new BusinessRuleException('REVIEW_DETAILS_CHANGED', 'The details changed after you confirmed them. Your branch will send you a new link.', 410);
         }
 
-        if ($party->review_viewed_at === null && $status === 'pending') {
-            $party->forceFill(['review_viewed_at' => now()])->save();
+        // Each load of the page is one open; when they are used up the branch has to send a new link.
+        // (A customer already on the page can still ask for the code and confirm.)
+        if ($status === 'pending') {
+            if ($party->review_open_count >= $this->maxOpens()) {
+                throw new BusinessRuleException('REVIEW_LINK_EXPIRED', 'This link has been opened too many times. Please ask your branch to send you a new one.', 410);
+            }
+
+            $party->forceFill(['review_open_count' => $party->review_open_count + 1, 'review_viewed_at' => $party->review_viewed_at ?? now()])->save();
         }
 
+        return $this->payload($party, $status);
+    }
+
+    /**
+     * What the customer sees, for an officer who shows it to a customer without a smartphone. Not an open
+     * of the link and not recorded as a view.
+     *
+     * @return array<string, mixed>
+     */
+    public function customerDetails(Loan $loan, string $customerPublicId): array
+    {
+        $party = $this->partyOf($loan, $customerPublicId);
+
+        return $this->payload($party, $this->statusOf($party));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function payload(LoanParty $party, string $status): array
+    {
         $own = $this->corrections($this->rootOf($party))->where('customer.public_id', $party->customer->public_id);
 
         return [
             'status' => $status,
             'customer_phone_masked' => PhoneNormalizer::mask($party->customer->phone_primary),
-            'link_expires_at' => $party->review_expires_at?->toApiString(),
+            'link_expires_at' => null,
+            'opens_left' => max(0, $this->maxOpens() - $party->review_open_count),
             'confirmed_at' => $party->review_confirmed_at?->toApiString(),
             'declaration_text' => self::DECLARATION,
             'details' => ['kyc' => $this->kycDetails($party), 'loan' => $this->loanDetails($party)],
             'corrections' => $own->map(fn ($c) => collect($c)->only(['id', 'stage', 'field_name', 'current_value', 'proposed_value', 'reason', 'status', 'submitted_at'])->all())->values()->all(),
         ];
+    }
+
+    protected function maxOpens(): int
+    {
+        return max(1, (int) Setting::value('loan_review.max_opens', 2));
     }
 
     /**
@@ -355,7 +400,9 @@ class LoanReviewLinkService
         $this->otp->verify($challenge, $code, $this->hashFor($party));
         $this->markConfirmed($party, 'link', null);
 
-        $this->workflow->record($this->rootOf($party), LoanActivityType::Update, null, "{$party->customer->customer_no} confirmed the loan details on the review link");
+        $root = $this->rootOf($party);
+        $this->workflow->record($root, LoanActivityType::Update, null, "{$party->customer->customer_no} confirmed the loan details on the review link");
+        $this->alertStaff($root, 'LOAN_REVIEW_CONFIRMED', 'Customer confirmed the loan details', "{$party->customer->customer_no} confirmed the details and terms of {$root->application_no} on the review link.");
 
         return [
             'status' => 'confirmed',
@@ -391,6 +438,14 @@ class LoanReviewLinkService
             'reason' => $data['reason'],
         ]);
 
+        $this->alertStaff(
+            $root,
+            'LOAN_CORRECTION_REQUESTED',
+            'Customer asked for a correction',
+            "{$party->customer->customer_no} asked to correct {$data['field_name']} on {$root->application_no}. Open the loan to answer.",
+            ['correction_id' => $activity->id, 'field_name' => $data['field_name']],
+        );
+
         return [
             'id' => $activity->id,
             'status' => 'pending_review',
@@ -412,10 +467,6 @@ class LoanReviewLinkService
 
         if ($party->review_token_hash === null) {
             return 'not_sent';
-        }
-
-        if ($party->review_expires_at?->isPast()) {
-            return 'expired';
         }
 
         $locked = OtpChallenge::where('subject_type', $party->getMorphClass())->where('subject_id', $party->id)
@@ -445,6 +496,20 @@ class LoanReviewLinkService
             ->whereNull('released_at')
             ->orderBy('id')
             ->get();
+    }
+
+    /**
+     * Tell the people working the loan (in-app notification): its officer and creator, and the branch staff who
+     * manage offers. Only references go in the message, never personal data.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function alertStaff(Loan $loan, string $type, string $title, string $message, array $data = []): void
+    {
+        $own = User::whereIn('id', array_filter([$loan->assigned_officer_id, $loan->created_by]))->where('is_active', true)->get();
+        $managers = $this->notifications->staffWithPermission('Loan Offer Manage', $loan->branch_id);
+
+        $this->notifications->notifyStaff($own->merge($managers)->unique('id')->values(), $type, $title, $message, ['loan_public_id' => $loan->public_id, 'application_no' => $loan->application_no] + $data);
     }
 
     protected function assertOpen(Loan $loan): void

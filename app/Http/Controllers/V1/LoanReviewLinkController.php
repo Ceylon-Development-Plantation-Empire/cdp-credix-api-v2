@@ -32,7 +32,7 @@ class LoanReviewLinkController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Loan Index', only: ['status', 'preview', 'corrections']),
+            new Middleware('permission:Loan Index', only: ['status', 'preview', 'customerDetails', 'corrections']),
             new Middleware('permission:Loan Offer Manage', only: ['sendLink', 'sendOtp', 'verifyOtp', 'resolveCorrection']),
         ];
     }
@@ -45,6 +45,14 @@ class LoanReviewLinkController extends Controller implements HasMiddleware
     public function preview(string $publicId): JsonResponse
     {
         return $this->run($publicId, 'Failed to load the review preview', fn (Loan $loan) => $this->ok('Preview loaded', $this->reviews->preview($loan)));
+    }
+
+    /**
+     * What this customer sees on their link, for an officer who shows it to a customer without a smartphone.
+     */
+    public function customerDetails(string $publicId, string $customerPublicId): JsonResponse
+    {
+        return $this->run($publicId, 'Failed to load the customer review', fn (Loan $loan) => $this->ok('Review loaded', $this->reviews->customerDetails($loan, $customerPublicId)));
     }
 
     public function sendLink(SendReviewLinkRequest $request, string $publicId): JsonResponse

@@ -359,6 +359,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         // Customer review link: one SMS link and one code per borrower (the customer can ask for corrections)
         Route::get('{publicId}/review', [LoanReviewLinkController::class, 'status']);
         Route::get('{publicId}/review/preview', [LoanReviewLinkController::class, 'preview']);
+        Route::get('{publicId}/review/customers/{customerPublicId}', [LoanReviewLinkController::class, 'customerDetails']);
         Route::post('{publicId}/review/send-link', [LoanReviewLinkController::class, 'sendLink'])->middleware('throttle:otp-send');
         Route::post('{publicId}/review/customers/{customerPublicId}/send-otp', [LoanReviewLinkController::class, 'sendOtp'])->middleware('throttle:otp-send');
         Route::post('{publicId}/review/customers/{customerPublicId}/verify-otp', [LoanReviewLinkController::class, 'verifyOtp'])->middleware('throttle:otp-verify');
