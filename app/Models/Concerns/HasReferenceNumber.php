@@ -18,7 +18,9 @@ trait HasReferenceNumber
     {
         static::created(function ($model) {
             if (empty($model->{static::REFERENCE_COLUMN})) {
-                $model->{static::REFERENCE_COLUMN} = static::REFERENCE_PREFIX.'-'.str_pad((string) $model->getKey(), 6, '0', STR_PAD_LEFT);
+                $model->{static::REFERENCE_COLUMN} = method_exists($model, 'generateReferenceNumber')
+                    ? $model->generateReferenceNumber()
+                    : static::REFERENCE_PREFIX.'-'.str_pad((string) $model->getKey(), 6, '0', STR_PAD_LEFT);
                 $model->saveQuietly();
             }
         });

@@ -91,7 +91,7 @@ describe('applications', function () {
             ->assertJsonPath('data.terms.rate', '18.0000')
             ->assertJsonPath('data.terms.cost_label', 'Interest')
             ->assertJsonPath('data.parties.0.role', 'borrower')
-            ->assertJsonPath('data.application_no', 'APP-'.str_pad((string) Loan::first()->id, 6, '0', STR_PAD_LEFT));
+            ->assertJsonPath('data.application_no', 'APP-'.now()->format('ymd').'0001');
     });
 
     it('keeps the amount within the product band and the borrower type within the product', function () {
@@ -155,7 +155,7 @@ describe('workflow', function () {
 
         loanDisburse($this, $id)->assertOk()
             ->assertJsonPath('data.status', 'active')
-            ->assertJsonPath('data.loan_no', 'LN-'.str_pad((string) $loan->id, 6, '0', STR_PAD_LEFT))
+            ->assertJsonPath('data.loan_no', 'CDP-'.now()->format('ymd').'0001')
             ->assertJsonPath('data.balances.outstanding_principal', '150000.00');
 
         expect(LoanInstallment::where('loan_id', $loan->id)->count())->toBe(24)

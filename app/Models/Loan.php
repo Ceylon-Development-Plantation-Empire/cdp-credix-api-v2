@@ -36,6 +36,44 @@ class Loan extends Model
 
     public const REFERENCE_COLUMN = 'application_no';
 
+    public function generateReferenceNumber(): string
+    {
+        $date = $this->created_at ? $this->created_at->format('ymd') : now()->format('ymd');
+        $prefix = self::REFERENCE_PREFIX.'-'.$date;
+
+        $latest = static::withoutGlobalScopes()
+            ->where('application_no', 'like', $prefix.'%')
+            ->orderByDesc('application_no')
+            ->value('application_no');
+
+        if ($latest && preg_match('/(\d{4})$/', $latest, $matches)) {
+            $seq = (int) $matches[1] + 1;
+        } else {
+            $seq = 1;
+        }
+
+        return $prefix.str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
+    }
+
+    public static function nextLoanNo(): string
+    {
+        $date = now()->format('ymd');
+        $prefix = 'CDP-'.$date;
+
+        $latest = static::withoutGlobalScopes()
+            ->where('loan_no', 'like', $prefix.'%')
+            ->orderByDesc('loan_no')
+            ->value('loan_no');
+
+        if ($latest && preg_match('/(\d{4})$/', $latest, $matches)) {
+            $seq = (int) $matches[1] + 1;
+        } else {
+            $seq = 1;
+        }
+
+        return $prefix.str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
+    }
+
     /**
      * Only what an officer types on the application. Status, terms, amounts after approval and
      * the servicing cache are set by the loan services through forceFill, never from a request.
