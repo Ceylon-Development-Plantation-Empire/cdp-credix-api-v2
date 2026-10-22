@@ -35,6 +35,9 @@ final class CollateralTypes
      * accepted, so nothing changes for existing clients. Head office may relabel them and change
      * their fields and documents; the valuation and reference of a system type are fixed.
      *
+     * Only the identifying field of each type is required (owner decision 22 Oct 2026, migration
+     * 2026_10_22_000200); head office can make more of them required through the lookups.
+     *
      * Rule tokens: "today" in a date rule is the Sri Lankan business date; "next_year" is next year.
      */
     public const SYSTEM = [
@@ -49,8 +52,8 @@ final class CollateralTypes
                     'notary' => ['nullable', 'string', 'max:150'],
                     'plan_no' => ['nullable', 'string', 'max:50'],
                     'lot_no' => ['nullable', 'string', 'max:20'],
-                    'extent' => ['required', 'string', 'max:50'],
-                    'address' => ['required', 'string', 'max:255'],
+                    'extent' => ['nullable', 'string', 'max:50'],
+                    'address' => ['nullable', 'string', 'max:255'],
                 ],
                 'documents' => ['property-deed', 'valuation-report'],
             ],
@@ -62,11 +65,11 @@ final class CollateralTypes
                 'reference' => 'registration',
                 'fields' => [
                     'registration_no' => ['required', 'string', 'max:20'],
-                    'chassis_no' => ['required', 'string', 'max:40'],
-                    'engine_no' => ['required', 'string', 'max:40'],
-                    'make' => ['required', 'string', 'max:50'],
-                    'model' => ['required', 'string', 'max:50'],
-                    'year' => ['required', 'integer', 'min:1950', 'max:next_year'],
+                    'chassis_no' => ['nullable', 'string', 'max:40'],
+                    'engine_no' => ['nullable', 'string', 'max:40'],
+                    'make' => ['nullable', 'string', 'max:50'],
+                    'model' => ['nullable', 'string', 'max:50'],
+                    'year' => ['nullable', 'integer', 'min:1950', 'max:next_year'],
                 ],
                 'documents' => ['vehicle-cr', 'valuation-report'],
             ],
@@ -77,7 +80,7 @@ final class CollateralTypes
                 'valuation' => 'gold_weight',
                 'reference' => 'custody',
                 'fields' => [
-                    'item' => ['required', 'string', 'max:100'],
+                    'item' => ['nullable', 'string', 'max:100'],
                 ],
                 'documents' => ['gold-valuation-slip'],
             ],
@@ -89,7 +92,7 @@ final class CollateralTypes
                 'reference' => 'registration',
                 'fields' => [
                     'account_no' => ['required', 'string', 'max:40'],
-                    'institution' => ['required', 'string', 'max:150'],
+                    'institution' => ['nullable', 'string', 'max:150'],
                     'maturity_date' => ['nullable', 'date_format:Y-m-d'],
                 ],
                 'documents' => [],
@@ -102,7 +105,7 @@ final class CollateralTypes
                 'reference' => 'registration',
                 'fields' => [
                     'account_no' => ['required', 'string', 'max:40'],
-                    'institution' => ['required', 'string', 'max:150'],
+                    'institution' => ['nullable', 'string', 'max:150'],
                     'maturity_date' => ['nullable', 'date_format:Y-m-d'],
                 ],
                 'documents' => [],
