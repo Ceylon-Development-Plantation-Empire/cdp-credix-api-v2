@@ -364,6 +364,8 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::get('{publicId}', [LoanController::class, 'show']);
         Route::put('{publicId}', [LoanController::class, 'update']);
         Route::get('{publicId}/schedule', [LoanController::class, 'schedule']);
+        Route::get('{publicId}/schedule-versions', [LoanServicingController::class, 'scheduleVersions']);
+        Route::get('{publicId}/restructures', [LoanServicingController::class, 'restructures']);
         Route::get('{publicId}/activities', [LoanController::class, 'activities']);
         Route::post('{publicId}/notes', [LoanController::class, 'addNote']);
         Route::get('{publicId}/document-checklist', [LoanController::class, 'checklist']);
@@ -410,6 +412,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::get('{publicId}/settlement-quote', [LoanServicingController::class, 'settlementQuote']);
         Route::post('{publicId}/settle', [LoanServicingController::class, 'settle']);
         Route::post('{publicId}/installments/{installmentNo}/penalty-waiver', [LoanServicingController::class, 'waivePenalty'])->whereNumber('installmentNo');
+        Route::post('{publicId}/restructure/preview', [LoanServicingController::class, 'restructurePreview']);
         Route::post('{publicId}/restructure', [LoanServicingController::class, 'restructure']);
 
         // Gold loan renewal (POST needs an Idempotency-Key header)

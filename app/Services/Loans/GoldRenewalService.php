@@ -163,6 +163,7 @@ class GoldRenewalService
             $this->safekeeping->apply($loan, $today);
 
             $this->workflow->record($loan, LoanActivityType::Update, $by, "Gold loan renewed ({$loan->renewal_count}) to {$loan->maturity_date->toDateString()}", [
+                'schedule_version' => (int) $loan->installments()->max('schedule_version'),
                 'transaction' => $transaction->txn_no,
                 'principal' => (string) $remaining,
                 'rate' => $q['rate'],

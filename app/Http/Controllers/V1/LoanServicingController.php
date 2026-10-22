@@ -15,6 +15,7 @@ use App\Models\Loan;
 use App\Services\Loans\EarlySettlementService;
 use App\Services\Loans\PenaltyService;
 use App\Services\Loans\RestructureService;
+use App\Services\Loans\ScheduleVersionService;
 use App\Support\BusinessDate;
 use App\Traits\HandlesApiErrors;
 use App\Traits\PaginatesResources;
@@ -33,15 +34,16 @@ class LoanServicingController extends Controller implements HasMiddleware
         protected EarlySettlementService $settlements,
         protected PenaltyService $penalties,
         protected RestructureService $restructures,
+        protected ScheduleVersionService $versions,
     ) {}
 
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Loan Index', only: ['statement', 'settlementQuote']),
+            new Middleware('permission:Loan Index', only: ['statement', 'settlementQuote', 'scheduleVersions', 'restructures']),
             new Middleware('permission:Loan Settle', only: ['settle']),
             new Middleware('permission:Penalty Waiver Request', only: ['waivePenalty']),
-            new Middleware('permission:Loan Restructure Request', only: ['restructure']),
+            new Middleware('permission:Loan Restructure Request', only: ['restructure', 'restructurePreview']),
         ];
     }
 
@@ -131,6 +133,73 @@ class LoanServicingController extends Controller implements HasMiddleware
             ], 202);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to request penalty waiver', $th);
+        }
+    }
+
+    /**
+     * The revisions of the repayment schedule: version 1 from disbursement, then one per restructure
+     * or renewal, with what each changed and how much was paid on it.
+     */
+    public function scheduleVersions(string $publicId)
+    {
+        try {
+            $loan = Loan::where('public_id', $publicId)->first();
+
+            if (! $loan) {
+                return $this->notFound('Loan not found');
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Schedule versions retrieved successfully',
+                'data' => $this->versions->versions($loan),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to retrieve schedule versions', $th);
+        }
+    }
+
+    /**
+     * Every restructure request on the loan, newest first: who asked, why, what was proposed and what was decided.
+     */
+    public function restructures(string $publicId)
+    {
+        try {
+            $loan = Loan::where('public_id', $publicId)->first();
+
+            if (! $loan) {
+                return $this->notFound('Loan not found');
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Restructure requests retrieved successfully',
+                'data' => $this->versions->restructureRequests($loan)->map(fn ($request) => (new ApprovalRequestResource($request))->resolve() + ['payload' => $request->payload])->values(),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to retrieve restructure requests', $th);
+        }
+    }
+
+    /**
+     * What a restructure would do, without sending it for approval: the new schedule and instalment.
+     */
+    public function restructurePreview(RestructureRequest $request, string $publicId)
+    {
+        try {
+            $loan = Loan::where('public_id', $publicId)->first();
+
+            if (! $loan) {
+                return $this->notFound('Loan not found');
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Restructure preview calculated',
+                'data' => $this->restructures->preview($loan, $request->validated()),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to preview the restructure', $th);
         }
     }
 

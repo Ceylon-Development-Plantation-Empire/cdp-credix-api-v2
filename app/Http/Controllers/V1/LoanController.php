@@ -167,9 +167,12 @@ class LoanController extends Controller implements HasMiddleware
      * The repayment schedule once disbursed; before that, a preview on the current terms
      * (it is fixed from the disbursement date when the loan is paid out).
      */
-    public function schedule(string $publicId)
+    public function schedule(Request $request, string $publicId)
     {
         try {
+            $request->validate(['version' => ['nullable', 'string', 'regex:/^(current|all|\d+)$/']]);
+            $version = (string) $request->query('version', 'current');
+
             $loan = Loan::where('public_id', $publicId)->first();
 
             if (! $loan) {
@@ -178,8 +181,15 @@ class LoanController extends Controller implements HasMiddleware
 
             $loans = $this->applications->borrowingLoans($loan);
 
-            $schedules = $loans->map(function (Loan $each) {
+            $schedules = $loans->map(function (Loan $each) use ($version) {
                 $installments = $each->installments()->get();
+
+                // The schedule the customer owes now (the latest version) unless asked otherwise:
+                // ?version=3 shows that revision only, ?version=all lists every version.
+                if ($version !== 'all' && $installments->isNotEmpty()) {
+                    $wanted = $version === 'current' ? (int) $installments->max('schedule_version') : (int) $version;
+                    $installments = $installments->where('schedule_version', $wanted)->values();
+                }
 
                 return [
                     'loan' => ['public_id' => $each->public_id, 'application_no' => $each->application_no, 'loan_no' => $each->loan_no],

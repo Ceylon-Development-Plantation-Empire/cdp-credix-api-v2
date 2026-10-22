@@ -74,24 +74,7 @@ class RestructureService
         $this->assertRestructurable($loan, $payload);
 
         $today = BusinessDate::todayImmutable();
-        $unpaid = $this->balances->unpaidInstallments($loan);
-        $sum = fn (AllocationComponent $c, ?callable $filter = null) => Money::sum(($filter ? $unpaid->filter($filter) : $unpaid)->map(fn (LoanInstallment $i) => $i->unpaid($c)));
-
-        $principal = $sum(AllocationComponent::Principal);
-        $charges = $sum(AllocationComponent::Charge);
-        $penalty = $sum(AllocationComponent::Penalty);
-        $islamic = $loan->finance_basis === FinanceBasis::Islamic;
-        $tenure = (int) $payload['tenure'];
-
-        if ($islamic) {
-            $lines = $this->spreadSalePrice($loan, $principal, $sum(AllocationComponent::Profit), $tenure, $today);
-            $rate = (string) $loan->rate;
-        } else {
-            $dueProfit = $sum(AllocationComponent::Profit, fn (LoanInstallment $i) => $i->due_date->lessThanOrEqualTo($today));
-            $terms = new LoanTerms($principal->plus($dueProfit), $payload['rate'], $tenure, $loan->repayment_frequency, $today);
-            $lines = array_map(fn ($l) => [$l->dueDate, $l->principal, $l->profit], $loan->pricing_method->calculator()->buildSchedule($terms)->lines);
-            $rate = (string) $payload['rate'];
-        }
+        ['unpaid' => $unpaid, 'lines' => $lines, 'charges' => $charges, 'penalty' => $penalty, 'dueProfit' => $dueProfit, 'rate' => $rate, 'tenure' => $tenure, 'islamic' => $islamic] = $this->plan($loan, $payload, $today);
 
         $version = (int) $loan->installments()->max('schedule_version') + 1;
         $graceDays = (int) ($this->pricing->termsOf($loan)['grace_period_days'] ?? Setting::value('repayment.grace_period_days', 7));
@@ -133,6 +116,87 @@ class RestructureService
         ]);
 
         return $this->balances->refresh($loan);
+    }
+
+    /**
+     * What a restructure would do, without doing it: the new schedule, instalment and maturity date.
+     * Nothing is saved and no approval is created; the officer reads it before sending the request.
+     *
+     * @param  array{tenure: int, rate?: string|null}  $data
+     * @return array<string, mixed>
+     */
+    public function preview(Loan $loan, array $data): array
+    {
+        $this->assertRestructurable($loan, $data);
+
+        $today = BusinessDate::todayImmutable();
+        $plan = $this->plan($loan, ['tenure' => (int) $data['tenure'], 'rate' => $loan->finance_basis === FinanceBasis::Islamic ? null : (string) ($data['rate'] ?? $loan->rate)], $today);
+
+        $schedule = [];
+
+        foreach ($plan['lines'] as $n => [$dueDate, $principal, $profit]) {
+            $schedule[] = [
+                'installment_no' => $n + 1,
+                'due_date' => $dueDate->toDateString(),
+                'principal_due' => (string) $principal,
+                'profit_due' => (string) $profit,
+                'charges_due' => (string) ($n === 0 ? $plan['charges'] : Money::zero()),
+                'penalty_due' => (string) ($n === 0 ? $plan['penalty'] : Money::zero()),
+                'total_due' => (string) $principal->plus($profit)->plus($n === 0 ? $plan['charges']->plus($plan['penalty']) : Money::zero()),
+            ];
+        }
+
+        $first = $plan['lines'][0];
+
+        return [
+            'from' => ['tenure' => $loan->tenure, 'rate' => (string) $loan->rate, 'installment_amount' => (string) $loan->installment_amount, 'maturity_date' => $loan->maturity_date?->toDateString()],
+            'to' => [
+                'tenure' => $plan['tenure'],
+                'rate' => $plan['rate'],
+                'installment_amount' => (string) $first[1]->plus($first[2]),
+                'maturity_date' => end($plan['lines'])[0]->toDateString(),
+                'starts_on' => $today->toDateString(),
+                'schedule_version' => (int) $loan->installments()->max('schedule_version') + 1,
+            ],
+            'rescheduled' => [
+                'principal' => (string) $plan['principal'],
+                'charges' => (string) $plan['charges'],
+                'penalty' => (string) $plan['penalty'],
+                'profit_due_to_date' => (string) $plan['dueProfit'],
+            ],
+            'schedule' => $schedule,
+        ];
+    }
+
+    /**
+     * The unpaid lines and the new lines of a restructure (shared by preview and apply).
+     *
+     * @param  array{tenure: int, rate?: string|null}  $payload
+     * @return array<string, mixed>
+     */
+    protected function plan(Loan $loan, array $payload, CarbonImmutable $today): array
+    {
+        $unpaid = $this->balances->unpaidInstallments($loan);
+        $sum = fn (AllocationComponent $c, ?callable $filter = null) => Money::sum(($filter ? $unpaid->filter($filter) : $unpaid)->map(fn (LoanInstallment $i) => $i->unpaid($c)));
+
+        $principal = $sum(AllocationComponent::Principal);
+        $charges = $sum(AllocationComponent::Charge);
+        $penalty = $sum(AllocationComponent::Penalty);
+        $islamic = $loan->finance_basis === FinanceBasis::Islamic;
+        $tenure = (int) $payload['tenure'];
+        $dueProfit = Money::zero();
+
+        if ($islamic) {
+            $lines = $this->spreadSalePrice($loan, $principal, $sum(AllocationComponent::Profit), $tenure, $today);
+            $rate = (string) $loan->rate;
+        } else {
+            $dueProfit = $sum(AllocationComponent::Profit, fn (LoanInstallment $i) => $i->due_date->lessThanOrEqualTo($today));
+            $terms = new LoanTerms($principal->plus($dueProfit), $payload['rate'], $tenure, $loan->repayment_frequency, $today);
+            $lines = array_map(fn ($l) => [$l->dueDate, $l->principal, $l->profit], $loan->pricing_method->calculator()->buildSchedule($terms)->lines);
+            $rate = (string) $payload['rate'];
+        }
+
+        return compact('unpaid', 'lines', 'principal', 'charges', 'penalty', 'dueProfit', 'rate', 'tenure', 'islamic');
     }
 
     /**
