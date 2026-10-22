@@ -218,7 +218,9 @@ final class LoanFixtures
      */
     public static function murabahaProduct(array $overrides = []): Product
     {
-        $product = new Product(array_merge([
+        // The catalogue seeder already holds a Murabaha product with this slug: the fixture sets it to the terms the tests need.
+        $product = Product::where('slug', 'murabaha-asset-finance')->first() ?? new Product;
+        $product->fill(array_merge([
             'slug' => 'murabaha-asset-finance',
             'name' => 'Murabaha Asset Finance',
             'category_id' => ProductCategory::findBySlug('islamic-standard-borrowing')->id,

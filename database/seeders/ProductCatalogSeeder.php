@@ -25,8 +25,8 @@ class ProductCatalogSeeder extends Seeder
 
         $standard = $this->category('standard-borrowing', 'Standard Borrowing', FinanceBasis::Conventional, $general, 1);
         $development = $this->category('development-fund', 'Development Fund', FinanceBasis::Conventional, $general, 2);
-        $this->category('islamic-standard-borrowing', 'Standard Borrowing', FinanceBasis::Islamic, $islamic, 1);
-        $this->category('islamic-development-fund', 'Development Fund', FinanceBasis::Islamic, $islamic, 2);
+        $islamicStandard = $this->category('islamic-standard-borrowing', 'Standard Borrowing', FinanceBasis::Islamic, $islamic, 1);
+        $islamicDev = $this->category('islamic-development-fund', 'Development Fund', FinanceBasis::Islamic, $islamic, 2);
 
         $individual = ['allows_individual' => true, 'allows_joint' => true, 'allows_group' => false];
         $group = ['allows_individual' => false, 'allows_joint' => false, 'allows_group' => true, 'min_group_members' => 3, 'max_group_members' => 30];
@@ -42,6 +42,10 @@ class ProductCatalogSeeder extends Seeder
             ['festival-loan', 'Festival Loan', $standard, 'flat', 'monthly', $individual + ['min_guarantors' => 1, 'max_guarantors' => 2]],
             ['womens-empowerment-micro-loan', "Women's Empowerment Micro Loan", $development, 'flat', 'weekly', $group],
             ['community-development-fund', 'Community Development Fund', $development, 'flat', 'monthly', $group],
+            ['murabaha-asset-finance', 'Murabaha Asset Finance', $islamicStandard, 'murabaha', 'monthly', $individual + ['requires_collateral' => true]],
+            ['ijara-vehicle-leasing', 'Ijara Vehicle Leasing', $islamicStandard, 'ijarah', 'monthly', $individual + ['requires_collateral' => true]],
+            ['rahn-islamic-gold', 'Rahn Islamic Gold Pawning', $islamicStandard, 'rahn', 'bullet', ['allows_individual' => true, 'requires_collateral' => true]],
+            ['qard-hasan-micro-finance', 'Qard Hasan Micro Finance', $islamicDev, 'qard_hasan', 'monthly', $group],
         ];
 
         foreach ($products as [$slug, $name, $category, $method, $frequency, $extra]) {

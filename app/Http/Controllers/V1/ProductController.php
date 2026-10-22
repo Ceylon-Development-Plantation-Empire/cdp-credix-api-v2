@@ -56,7 +56,7 @@ class ProductController extends Controller implements HasMiddleware
     public function index(Request $request)
     {
         try {
-            $query = Product::with('category')->orderBy('name');
+            $query = Product::with(['category', 'charges'])->orderBy('name');
 
             if ($request->filled('search')) {
                 $query->search($request->search);
