@@ -38,6 +38,11 @@ class LoanListResource extends JsonResource
             // The role the customer asked about plays on this loan; only when the list is filtered by customer.
             'customer_role' => $this->whenLoaded('parties', fn () => $this->customerRole()),
             'amount' => $this->decisionAmount(),
+            'tenure' => $this->tenure,
+            'rate' => (string) $this->rate,
+            'repayment_frequency' => $this->repayment_frequency?->value,
+            'loan_type' => $this->finance_basis?->value,
+            'pricing_method' => $this->pricing_method?->value,
             'status' => $this->status->value,
             'days_past_due' => $this->days_past_due,
             'created_at' => $this->created_at?->toApiString(),
