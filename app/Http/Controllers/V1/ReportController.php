@@ -6,9 +6,11 @@ namespace App\Http\Controllers\V1;
 
 use App\Exceptions\BusinessRuleException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Reports\DashboardOverviewRequest;
 use App\Http\Requests\Reports\DashboardTrendRequest;
 use App\Http\Requests\Reports\PeriodReportRequest;
 use App\Http\Requests\Reports\SnapshotReportRequest;
+use App\Services\Reports\DashboardService;
 use App\Services\Reports\ReportService;
 use App\Support\BusinessDate;
 use App\Traits\HandlesApiErrors;
@@ -32,6 +34,7 @@ class ReportController extends Controller implements HasMiddleware
 
     public function __construct(
         protected ReportService $reports,
+        protected DashboardService $dashboard,
     ) {}
 
     /**
@@ -46,11 +49,12 @@ class ReportController extends Controller implements HasMiddleware
     }
 
     /**
-     * GET /dashboard/overview.
+     * GET /dashboard/overview?from&to&branch_id: headline figures, KPIs against the previous period,
+     * targets, pipeline, portfolio mix, arrears aging, recovery, upcoming dues, trend and recent activity.
      */
-    public function overview(SnapshotReportRequest $request): JsonResponse
+    public function overview(DashboardOverviewRequest $request): JsonResponse
     {
-        return $this->respond('Dashboard', fn () => $this->reports->overview($request->validated()));
+        return $this->respond('Dashboard', fn () => $this->dashboard->overview($request->validated()));
     }
 
     /**
