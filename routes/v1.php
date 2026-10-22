@@ -29,12 +29,14 @@ use App\Http\Controllers\V1\GlReportController;
 use App\Http\Controllers\V1\GoldLoanRenewalController;
 use App\Http\Controllers\V1\GroupController;
 use App\Http\Controllers\V1\ImportController;
-use App\Http\Controllers\V1\LendingMarginPlanController;
+use App\Http\Controllers\V1\LegalDocumentController;
+use App\Http\Controllers\V1\LegalTemplateController;
 use App\Http\Controllers\V1\LoanCollateralController;
 use App\Http\Controllers\V1\LoanController;
 use App\Http\Controllers\V1\LoanDisbursementController;
 use App\Http\Controllers\V1\LoanDocumentController;
 use App\Http\Controllers\V1\LoanPartyController;
+use App\Http\Controllers\V1\LoanReviewLinkController;
 use App\Http\Controllers\V1\LoanServicingController;
 use App\Http\Controllers\V1\LoanWorkflowController;
 use App\Http\Controllers\V1\LoanWriteOffController;
@@ -46,6 +48,7 @@ use App\Http\Controllers\V1\ProductCategoryController;
 use App\Http\Controllers\V1\ProductController;
 use App\Http\Controllers\V1\ProfileController;
 use App\Http\Controllers\V1\ProvinceController;
+use App\Http\Controllers\V1\PublicLoanReviewController;
 use App\Http\Controllers\V1\RecoveryCaseController;
 use App\Http\Controllers\V1\RegionController;
 use App\Http\Controllers\V1\ReportController;
@@ -63,6 +66,14 @@ Route::prefix('v1')->group(function () {
     Route::post('login', [AuthController::class, 'login'])->middleware('throttle:login');
     // Second step while SMS 2FA is switched on (setting security.staff_login_otp).
     Route::post('login/verify-otp', [AuthController::class, 'verifyOtp'])->middleware('throttle:login');
+});
+
+/* the customer review link (SMS): no sign-in, the token in the link is the key */
+Route::prefix('v1/public/loan-review/{token}')->group(function () {
+    Route::get('/', [PublicLoanReviewController::class, 'show'])->middleware('throttle:review-open');
+    Route::post('request-otp', [PublicLoanReviewController::class, 'requestOtp'])->middleware('throttle:review-otp');
+    Route::post('confirm', [PublicLoanReviewController::class, 'confirm'])->middleware('throttle:review-confirm');
+    Route::post('correction-request', [PublicLoanReviewController::class, 'requestCorrection'])->middleware('throttle:review-open');
 });
 
 /* external recovery agencies: only the cases assigned to them */
@@ -213,19 +224,9 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::put('{code}', [ChargeTypeController::class, 'update']);
     });
 
-    // Collateral types (data: lookups of type collateral_type) with their fields, documents and plans,
+    // Collateral types (data: lookups of type collateral_type) with their fields and documents,
     // for the loan security step.
     Route::get('collateral-types', [CollateralTypeController::class, 'index']);
-
-    // Lending-margin plans: named lending percentages per collateral type, chosen (optionally) when
-    // a collateral is added to a loan.
-    Route::prefix('lending-margin-plans')->group(function () {
-        Route::get('options', [LendingMarginPlanController::class, 'options']);
-        Route::get('/', [LendingMarginPlanController::class, 'index']);
-        Route::post('/', [LendingMarginPlanController::class, 'store']);
-        Route::get('{code}', [LendingMarginPlanController::class, 'show']);
-        Route::put('{code}', [LendingMarginPlanController::class, 'update']);
-    });
 
     // Product Categories (General / Islamic → Standard Borrowing / Development Fund → …)
     Route::prefix('product-categories')->group(function () {
@@ -354,8 +355,17 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::delete('{publicId}/guarantors/{partyId}', [LoanPartyController::class, 'removeGuarantor'])->whereNumber('partyId');
         Route::post('{publicId}/parties/{partyId}/consent/send-otp', [LoanPartyController::class, 'sendConsent'])->whereNumber('partyId')->middleware('throttle:otp-send');
         Route::post('{publicId}/parties/{partyId}/consent/verify', [LoanPartyController::class, 'verifyConsent'])->whereNumber('partyId')->middleware('throttle:otp-verify');
-        Route::post('{publicId}/parties/{partyId}/offer/send-otp', [LoanPartyController::class, 'sendOffer'])->whereNumber('partyId')->middleware('throttle:otp-send');
-        Route::post('{publicId}/parties/{partyId}/offer/accept', [LoanPartyController::class, 'acceptOffer'])->whereNumber('partyId')->middleware('throttle:otp-verify');
+        Route::post('{publicId}/parties/{partyId}/offer/accept', [LoanPartyController::class, 'acceptOffer'])->whereNumber('partyId');
+        // Customer review link: one SMS link and one code per borrower (the customer can ask for corrections)
+        Route::get('{publicId}/review', [LoanReviewLinkController::class, 'status']);
+        Route::get('{publicId}/review/preview', [LoanReviewLinkController::class, 'preview']);
+        Route::post('{publicId}/review/send-link', [LoanReviewLinkController::class, 'sendLink'])->middleware('throttle:otp-send');
+        Route::post('{publicId}/review/customers/{customerPublicId}/send-otp', [LoanReviewLinkController::class, 'sendOtp'])->middleware('throttle:otp-send');
+        Route::post('{publicId}/review/customers/{customerPublicId}/verify-otp', [LoanReviewLinkController::class, 'verifyOtp'])->middleware('throttle:otp-verify');
+        Route::get('{publicId}/review/corrections', [LoanReviewLinkController::class, 'corrections']);
+        Route::post('{publicId}/review/corrections/{requestId}/resolve', [LoanReviewLinkController::class, 'resolveCorrection'])->whereNumber('requestId');
+
+        Route::post('{publicId}/offer/hold', [LoanPartyController::class, 'holdOffer']);
         Route::post('{publicId}/offer/decline', [LoanPartyController::class, 'declineOffer']);
 
         Route::get('{publicId}/collaterals', [LoanCollateralController::class, 'index']);
@@ -393,6 +403,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::get('{publicId}', [RecoveryCaseController::class, 'show']);
         Route::post('{publicId}/assign', [RecoveryCaseController::class, 'assign']);
         Route::post('{publicId}/legal', [RecoveryCaseController::class, 'moveToLegal']);
+        Route::get('{publicId}/activities', [RecoveryCaseController::class, 'activities']);
         Route::post('{publicId}/activities', [RecoveryCaseController::class, 'addActivity']);
     });
 
@@ -402,6 +413,24 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
     Route::get('templates/{id}', [TemplateController::class, 'show'])->whereNumber('id');
     Route::put('templates/{id}', [TemplateController::class, 'update'])->whereNumber('id');
     Route::get('notification-logs', [TemplateController::class, 'logs']);
+
+    // Legal documents: the wording (templates of the document channel) and what is prepared for each loan
+    Route::prefix('legal-document-templates')->group(function () {
+        Route::get('/', [LegalTemplateController::class, 'index']);
+        Route::get('list', [LegalTemplateController::class, 'activeList']);
+        Route::post('/', [LegalTemplateController::class, 'store']);
+        Route::get('{id}', [LegalTemplateController::class, 'show'])->whereNumber('id');
+        Route::put('{id}', [LegalTemplateController::class, 'update'])->whereNumber('id');
+    });
+    Route::prefix('legal-documents')->group(function () {
+        Route::get('/', [LegalDocumentController::class, 'index']);
+        Route::get('applications', [LegalDocumentController::class, 'applications']);
+        Route::post('/', [LegalDocumentController::class, 'store']);
+        Route::get('{publicId}', [LegalDocumentController::class, 'show'])->name('legal-documents.show');
+        Route::put('{publicId}', [LegalDocumentController::class, 'update']);
+        Route::delete('{publicId}', [LegalDocumentController::class, 'destroy']);
+        Route::patch('{publicId}/record-print', [LegalDocumentController::class, 'recordPrint']);
+    });
 
     // Reports and dashboard
     Route::get('dashboard/overview', [ReportController::class, 'overview']);
