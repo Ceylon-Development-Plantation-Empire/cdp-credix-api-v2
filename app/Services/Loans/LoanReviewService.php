@@ -289,14 +289,6 @@ class LoanReviewService
     {
         $problems = [];
 
-        if (! $party->customer->hasValidKyc()) {
-            $problems[] = ['code' => 'KYC_NOT_VERIFIED', 'message' => 'The guarantor has not confirmed their details (KYC).'];
-        }
-
-        if (! $this->parties->hasCurrentConsent($loan, $party)) {
-            $problems[] = ['code' => 'GUARANTOR_CONSENT_MISSING', 'message' => 'The guarantor has not agreed (by OTP) to the application as it is now.'];
-        }
-
         if ($this->eligibility->isBlockedGuarantor($party->customer)) {
             $problems[] = ['code' => 'GUARANTOR_INVOKED_BLOCKED', 'message' => 'The guarantor paid for another borrower and is blocked until that loan is settled.'];
         }

@@ -86,7 +86,6 @@ class LoanApplicationService
             $tenure = (int) ($data['tenure'] ?? $loan->tenure);
             $this->assertTenure($terms, $tenure);
 
-            $before = [(string) Money::of($loan->requested_amount), $loan->tenure];
 
             $loan->fill(array_intersect_key($data, array_flip(['purpose', 'meta'])) + ['tenure' => $tenure, 'updated_by' => $user->id]);
 
@@ -109,10 +108,6 @@ class LoanApplicationService
             }
 
             $loan->save();
-
-            if ($before !== [(string) Money::of($loan->requested_amount), $loan->tenure]) {
-                $loan->guarantors()->update(['consented_at' => null, 'consent_hash' => null]);
-            }
 
             $this->workflow->record($loan, LoanActivityType::Update, $user, 'Application updated', ['fields' => array_keys($data)]);
 

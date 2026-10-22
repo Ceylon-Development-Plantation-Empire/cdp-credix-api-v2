@@ -361,8 +361,6 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
 
         Route::post('{publicId}/guarantors', [LoanPartyController::class, 'addGuarantor']);
         Route::delete('{publicId}/guarantors/{partyId}', [LoanPartyController::class, 'removeGuarantor'])->whereNumber('partyId');
-        Route::post('{publicId}/parties/{partyId}/consent/send-otp', [LoanPartyController::class, 'sendConsent'])->whereNumber('partyId')->middleware('throttle:otp-send');
-        Route::post('{publicId}/parties/{partyId}/consent/verify', [LoanPartyController::class, 'verifyConsent'])->whereNumber('partyId')->middleware('throttle:otp-verify');
         Route::post('{publicId}/parties/{partyId}/offer/accept', [LoanPartyController::class, 'acceptOffer'])->whereNumber('partyId');
         // Customer review link: one SMS link and one code per borrower (the customer can ask for corrections)
         Route::get('{publicId}/review', [LoanReviewLinkController::class, 'status']);

@@ -7,17 +7,14 @@ namespace App\Services\Loans;
 use App\Enums\ClosureReason;
 use App\Enums\LoanActivityType;
 use App\Enums\LoanStatus;
-use App\Enums\OtpPurpose;
 use App\Enums\PartyRole;
 use App\Exceptions\BusinessRuleException;
 use App\Models\BorrowerGroupMember;
 use App\Models\Customer;
 use App\Models\Loan;
 use App\Models\LoanParty;
-use App\Models\OtpChallenge;
 use App\Models\Setting;
 use App\Models\User;
-use App\Services\Security\OtpService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
@@ -40,7 +37,6 @@ class LoanPartyService
         protected LoanWorkflowService $workflow,
         protected LoanPricingService $pricing,
         protected EligibilityService $eligibility,
-        protected OtpService $otp,
     ) {}
 
     public function addGuarantor(Loan $loan, Customer $customer, ?string $relationship, User $by): LoanParty
@@ -104,47 +100,6 @@ class LoanPartyService
 
             $this->workflow->record($loan, LoanActivityType::Update, $by, "Guarantor {$party->customer->customer_no} removed");
         });
-    }
-
-    /* Guarantor consent */
-
-    public function sendGuarantorConsent(Loan $loan, LoanParty $party, User $by): OtpChallenge
-    {
-        $this->assertGuarantorWindow($loan);
-        $this->assertRole($party, guarantor: true);
-
-        $terms = $this->guaranteeTerms($loan);
-        $customer = $party->customer;
-        $borrowers = $loan->isGroupFacility() ? "group {$loan->borrowerGroup->group_no}" : $loan->customer->full_name;
-
-        $message = "CDP Capital: :code is your code to agree to GUARANTEE loan {$loan->application_no} of Rs {$terms['amount']} for {$borrowers}. "
-            .'As guarantor you must pay if the borrower does not. Valid :minutes minutes. Never share this code.';
-
-        return $this->otp->issue(OtpPurpose::GuarantorConsent, $party, $customer->phone_primary, $message, $terms, $this->hash($terms), $by);
-    }
-
-    public function verifyGuarantorConsent(Loan $loan, LoanParty $party, string $code, User $by): LoanParty
-    {
-        $this->assertGuarantorWindow($loan);
-        $this->assertRole($party, guarantor: true);
-
-        $hash = $this->hash($this->guaranteeTerms($loan));
-
-        // Outside a transaction on purpose: a wrong code must stay counted (OtpService::verify).
-        $this->otp->verify($this->pendingChallenge($party, OtpPurpose::GuarantorConsent), $code, $hash);
-
-        $party->forceFill(['consented_at' => now(), 'consent_hash' => $hash])->save();
-        $this->workflow->record($loan, LoanActivityType::Update, $by, "Guarantor {$party->customer->customer_no} consented by OTP");
-
-        return $party;
-    }
-
-    /**
-     * True while the guarantor's consent matches the application as it is now.
-     */
-    public function hasCurrentConsent(Loan $loan, LoanParty $party): bool
-    {
-        return $party->consented_at !== null && hash_equals((string) $party->consent_hash, $this->hash($this->guaranteeTerms($loan)));
     }
 
     /* Offer acceptance */
@@ -313,17 +268,6 @@ class LoanPartyService
         if (! $guarantor && $party->hasConsented()) {
             throw new BusinessRuleException('OFFER_ALREADY_ACCEPTED', 'This borrower has already accepted the offer.', 409);
         }
-    }
-
-    protected function pendingChallenge(LoanParty $party, OtpPurpose $purpose): OtpChallenge
-    {
-        $challenge = $this->otp->latestPending($party, $purpose);
-
-        if (! $challenge) {
-            throw new BusinessRuleException('OTP_NOT_REQUESTED', 'No code is waiting for this person. Send a new code first.', 422);
-        }
-
-        return $challenge;
     }
 
     /**

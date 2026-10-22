@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Customers\VerifyOtpRequest;
 use App\Http\Requests\Loans\AddGuarantorRequest;
 use App\Http\Requests\Loans\LoanRemarksRequest;
 use App\Http\Requests\Loans\OptionalRemarksRequest;
@@ -22,7 +21,7 @@ use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
 /**
- * Guarantors, their OTP consent, and the officer recording that a borrower accepted the offer (no code).
+ * Guarantors, and the officer recording that a borrower accepted the offer (no code).
  * Codes are sent to the party's registered mobile and never appear in any response.
  */
 class LoanPartyController extends Controller implements HasMiddleware
@@ -36,7 +35,7 @@ class LoanPartyController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Loan Guarantor Manage', only: ['addGuarantor', 'removeGuarantor', 'sendConsent', 'verifyConsent']),
+            new Middleware('permission:Loan Guarantor Manage', only: ['addGuarantor', 'removeGuarantor']),
             new Middleware('permission:Loan Offer Manage', only: ['acceptOffer', 'holdOffer', 'declineOffer']),
         ];
     }
@@ -80,44 +79,6 @@ class LoanPartyController extends Controller implements HasMiddleware
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to remove guarantor', $th);
-        }
-    }
-
-    public function sendConsent(Request $request, string $publicId, int $partyId)
-    {
-        try {
-            [$loan, $party] = $this->find($publicId, $partyId);
-
-            if (! $party) {
-                return $this->notFound('Party not found');
-            }
-
-            $challenge = $this->parties->sendGuarantorConsent($loan, $party, $request->user());
-
-            return $this->codeSent($challenge->destination, $challenge->expires_at);
-        } catch (\Throwable $th) {
-            return $this->serverError('Failed to send consent code', $th);
-        }
-    }
-
-    public function verifyConsent(VerifyOtpRequest $request, string $publicId, int $partyId)
-    {
-        try {
-            [$loan, $party] = $this->find($publicId, $partyId);
-
-            if (! $party) {
-                return $this->notFound('Party not found');
-            }
-
-            $party = $this->parties->verifyGuarantorConsent($loan, $party, $request->validated('code'), $request->user());
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Guarantor consent recorded',
-                'data' => new LoanPartyResource($party->load('customer')),
-            ], 200);
-        } catch (\Throwable $th) {
-            return $this->serverError('Failed to verify consent code', $th);
         }
     }
 
