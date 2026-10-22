@@ -16,6 +16,7 @@ use App\Models\Collateral;
 use App\Models\Customer;
 use App\Models\Loan;
 use App\Models\LoanParty;
+use App\Models\Setting;
 use App\Models\User;
 use App\Support\Collateral\CollateralTypes;
 use Illuminate\Support\Arr;
@@ -114,7 +115,7 @@ class CollateralService
                 throw new BusinessRuleException('COLLATERAL_NOT_PROPOSED', 'Only a proposed collateral can be verified.', 409);
             }
 
-            if ($collateral->created_by === $by->id) {
+            if ($collateral->created_by === $by->id && Setting::segregationEnforced()) {
                 throw new BusinessRuleException('SELF_VERIFICATION_NOT_ALLOWED', 'Collateral must be verified by someone other than the person who recorded it.', 403);
             }
 

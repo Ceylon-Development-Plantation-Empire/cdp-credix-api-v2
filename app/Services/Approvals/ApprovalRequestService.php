@@ -11,6 +11,7 @@ use App\Models\ApprovalRequest;
 use App\Models\GlJournal;
 use App\Models\Loan;
 use App\Models\LoanTransaction;
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\Accounting\Approvals\ManualJournalHandler;
 use App\Services\Approvals\Contracts\ApprovalHandler;
@@ -147,7 +148,7 @@ class ApprovalRequestService
             $request = ApprovalRequest::whereKey($request->id)->lockForUpdate()->firstOrFail();
             $this->assertPending($request);
 
-            if ($request->requested_by === $approver->id) {
+            if ($request->requested_by === $approver->id && Setting::segregationEnforced()) {
                 throw new BusinessRuleException('SELF_APPROVAL_NOT_ALLOWED', 'You cannot decide a request you made yourself.', 403);
             }
 

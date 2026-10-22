@@ -14,6 +14,7 @@ use App\Models\Customer;
 use App\Models\Document;
 use App\Models\DocumentType;
 use App\Models\Loan;
+use App\Models\Setting;
 use App\Models\User;
 use App\Traits\ActivityLogTrait;
 use App\Traits\FileUploadTrait;
@@ -226,7 +227,7 @@ class DocumentService
     {
         $this->assertPending($document);
 
-        if ($document->uploaded_by === $user->id) {
+        if ($document->uploaded_by === $user->id && Setting::segregationEnforced()) {
             throw new BusinessRuleException('SELF_VERIFICATION_NOT_ALLOWED', 'A document must be verified by someone other than the person who uploaded it.', 403);
         }
 

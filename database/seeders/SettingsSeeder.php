@@ -24,8 +24,8 @@ class SettingsSeeder extends Seeder
             /* Loans */
             ['loan.open_loan_scope', 'loans', SettingType::String, 'submitted', ['value' => 'required|in:submitted,approved'],
                 'One open loan rule starts at', 'From which status a loan counts as open for the "one open loan per person" rule. submitted = an application that is not yet approved also blocks a new one (D-1).'],
-            ['approval.segregation_enabled', 'loans', SettingType::Boolean, '1', ['value' => 'required|boolean'],
-                'Maker-checker on loans', 'Reviewer, verifier, approver and disburser must be different users.'],
+            ['approval.segregation_enabled', 'loans', SettingType::Boolean, '0', ['value' => 'required|boolean'],
+                'Maker-checker on loans', 'When on, the reviewer, verifier, approver and disburser (and the maker and checker of documents, collateral and approval requests) must be different users. Off: the permission alone decides.'],
             ['borrower.min_age', 'loans', SettingType::Integer, '18', ['value' => 'required|integer|min:18|max:70'],
                 'Minimum borrower age', 'Age in years on the application date.'],
             ['borrower.max_age_at_maturity', 'loans', SettingType::Integer, '65', ['value' => 'required|integer|min:30|max:100'],

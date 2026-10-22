@@ -192,7 +192,7 @@ class LoanWorkflowService
      */
     public function assertSegregation(Loan $loan, User $user, array $steps): void
     {
-        if (! Setting::value('approval.segregation_enabled', true)) {
+        if (! Setting::segregationEnforced()) {
             return;
         }
 
