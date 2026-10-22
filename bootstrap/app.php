@@ -6,6 +6,7 @@ use App\Exceptions\ApiExceptionRenderer;
 use App\Http\Middleware\EnsurePasswordChanged;
 use App\Http\Middleware\EnsureTokenIsCurrent;
 use App\Http\Middleware\EnsureUserType;
+use App\Http\Middleware\VerifyCdpCoreKey;
 use App\Http\Middleware\ForceHttps;
 use App\Http\Middleware\SanitizeInput;
 use App\Http\Middleware\SecurityHeaders;
@@ -45,6 +46,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'sanitize.input' => SanitizeInput::class,
             'security.headers' => SecurityHeaders::class,
             'user.type' => EnsureUserType::class,
+            // CDP Core calling CrediX server to server: the shared key in X-Core-Key, no JWT.
+            'core.key' => VerifyCdpCoreKey::class,
             // SECURITY: refuse tokens issued before a password change / deactivation (token_version).
             'token.current' => EnsureTokenIsCurrent::class,
             // Only while setting security.force_password_change is on (default off).

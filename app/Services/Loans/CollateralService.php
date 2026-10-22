@@ -9,6 +9,7 @@ use App\Enums\CollateralValuation;
 use App\Enums\DocumentStatus;
 use App\Enums\LoanActivityType;
 use App\Enums\LoanStatus;
+use App\Enums\PartyRole;
 use App\Exceptions\BusinessRuleException;
 use App\Finance\Collateral\GoldValuation;
 use App\Finance\Support\Money;
@@ -17,6 +18,8 @@ use App\Models\Customer;
 use App\Models\Loan;
 use App\Models\LoanParty;
 use App\Models\Setting;
+use App\Support\BusinessDate;
+use App\Support\Mask;
 use App\Models\User;
 use App\Support\Collateral\CollateralTypes;
 use Illuminate\Support\Arr;
@@ -42,7 +45,45 @@ class CollateralService
         protected LoanPricingService $pricing,
         protected GoldValuation $gold,
         protected CollateralTypes $types,
+        protected InvestmentCollateralService $investments,
     ) {}
+
+    /**
+     * A CDP Core investment as collateral. The officer gives the NIC and the policy number; the value
+     * and the details come from CDP Core (see InvestmentCollateralService for the rules), and Core's
+     * answer is kept on the collateral as a snapshot.
+     */
+    public function addCdpInvestment(Loan $loan, string $nic, string $policyNumber, User $by): Collateral
+    {
+        return DB::transaction(function () use ($loan, $nic, $policyNumber, $by) {
+            $loan = $this->workflow->lock($loan);
+            $this->assertChangeWindow($loan);
+
+            $borrowers = Customer::whereIn('id', LoanParty::whereIn('loan_id', $loan->idsWithMemberLoans())
+                ->whereIn('role', PartyRole::borrowingValues())->whereNull('released_at')->pluck('customer_id'))->get();
+
+            ['investment' => $investment, 'owner' => $owner] = $this->investments->validate($loan, $borrowers, $nic, $policyNumber);
+
+            $collateral = $this->add($loan, [
+                'type' => InvestmentCollateralService::TYPE,
+                'owner_customer_public_id' => $owner->public_id,
+                'description' => "CDP investment {$investment['policy_number']}".($investment['product_name'] ? " ({$investment['product_name']})" : ''),
+                'details' => ['account_no' => $investment['policy_number'], 'institution' => 'CDP', 'maturity_date' => $investment['maturity_date']],
+                'market_value' => $investment['investment_amount'],
+                'valued_on' => BusinessDate::today()->toDateString(),
+                'valued_by' => 'CDP Core',
+            ], $by);
+
+            // The fields add() keeps are the type's own; the policy and Core's snapshot ride along for the reviewers.
+            $collateral->forceFill(['details' => ($collateral->details ?? []) + [
+                'policy_number' => $investment['policy_number'],
+                'nic' => Mask::idNumber($owner->normalizedIdNumber()),
+                'investment' => $investment,
+            ]])->save();
+
+            return $collateral;
+        });
+    }
 
     /**
      * @param  array<string, mixed>  $data  Validated CollateralRequest data.

@@ -8,6 +8,11 @@ use App\Http\Controllers\V1\ApprovalRequestController;
 use App\Http\Controllers\V1\AuthController;
 use App\Http\Controllers\V1\BorrowerGroupController;
 use App\Http\Controllers\V1\BranchController;
+use App\Http\Controllers\V1\CdpCustomerVerificationController;
+use App\Http\Controllers\V1\CustomerInvestmentController;
+use App\Http\Controllers\V1\External\CorePolicyHoldController;
+use App\Http\Controllers\V1\GlobalSearchController;
+use App\Http\Controllers\V1\LoanSecurityController;
 use App\Http\Controllers\V1\ChargeTypeController;
 use App\Http\Controllers\V1\CollateralTypeController;
 use App\Http\Controllers\V1\CountryController;
@@ -66,6 +71,11 @@ Route::prefix('v1')->group(function () {
     Route::post('login', [AuthController::class, 'login'])->middleware('throttle:login');
     // Second step while SMS 2FA is switched on (setting security.staff_login_otp).
     Route::post('login/verify-otp', [AuthController::class, 'verifyOtp'])->middleware('throttle:login');
+});
+
+/* server-to-server routes for CDP Core (X-Core-Key, no JWT) */
+Route::middleware(['core.key', 'throttle:60,1'])->prefix('v1/external/core')->group(function () {
+    Route::get('policy-hold', [CorePolicyHoldController::class, 'index']);
 });
 
 /* the customer review link (SMS): no sign-in, the token in the link is the key */
@@ -284,10 +294,17 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::delete('{id}', [DocumentRequirementController::class, 'destroy']);
     });
 
+    // CDP investment check (CDP Connect), for Customer 360 and customer search
+    Route::get('global-search/id-types', [GlobalSearchController::class, 'idTypes']);
+    Route::get('global-search', [GlobalSearchController::class, 'search']);
+    Route::post('loan-securities/investment-lookup', [LoanSecurityController::class, 'investmentLookup']);
+    Route::match(['get', 'post'], 'cdp/verify-customer', [CdpCustomerVerificationController::class, 'checkCustomer']);
+
     // Customers (addressed by public_id; other branches' customers are invisible)
     Route::prefix('customers')->group(function () {
         Route::get('/', [CustomerController::class, 'index']);
         Route::get('lookup', [CustomerController::class, 'lookup']);
+        Route::get('{publicId}/investments', [CustomerInvestmentController::class, 'index']);
         Route::get('bank-options', [CustomerController::class, 'bankOptions']);
         Route::post('/', [CustomerController::class, 'store']);
         Route::get('{publicId}', [CustomerController::class, 'show']);
@@ -377,6 +394,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
 
         Route::get('{publicId}/collaterals', [LoanCollateralController::class, 'index']);
         Route::post('{publicId}/collaterals', [LoanCollateralController::class, 'store']);
+        Route::post('{publicId}/collaterals/cdp-investment', [LoanCollateralController::class, 'storeInvestment']);
         Route::post('{publicId}/collaterals/{collateralId}/verify', [LoanCollateralController::class, 'verify']);
         Route::post('{publicId}/collaterals/{collateralId}/perfect', [LoanCollateralController::class, 'perfect']);
         Route::delete('{publicId}/collaterals/{collateralId}', [LoanCollateralController::class, 'destroy']);

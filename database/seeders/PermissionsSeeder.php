@@ -152,6 +152,8 @@ class PermissionsSeeder extends Seeder
             ['name' => 'Branch Data All', 'group_name' => 'Branch Access Permissions'],
 
             /* Customers */
+            ['name' => 'CDP Customer Verification', 'group_name' => 'CDP Connect Permissions'],
+            ['name' => 'Global Search', 'group_name' => 'CDP Connect Permissions'],
             ['name' => 'Customer Index', 'group_name' => 'Customer Management Permissions'],
             ['name' => 'Customer Create', 'group_name' => 'Customer Management Permissions'],
             ['name' => 'Customer Update', 'group_name' => 'Customer Management Permissions'],

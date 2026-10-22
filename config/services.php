@@ -52,6 +52,19 @@ return [
         ))),
     ],
 
+    // CDP Connect: the CDP investment system, read for Customer 360 and customer search.
+    'cdp_connect' => [
+        'base_url' => env('CDP_CONNECT_BASE_URL'),
+        'api_key' => env('CDP_CONNECT_API_KEY'),
+        'timeout' => (int) env('CDP_CONNECT_TIMEOUT', 15),
+        'key_header' => 'X-Credix-Key',
+    ],
+
+    // The other direction: CDP Core calling CrediX (policy-hold lookup before a payout). Core sends this key in X-Core-Key.
+    'cdp_core' => [
+        'inbound_key' => env('CDP_CORE_INBOUND_KEY'),
+    ],
+
     // Developer machines only (APP_ENV=local): write OTP codes to the log instead of sending SMS.
     // Ignored in every other environment. Keep false unless you are testing OTP flows locally.
     'otp' => [

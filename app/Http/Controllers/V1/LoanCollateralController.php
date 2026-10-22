@@ -6,6 +6,7 @@ namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documents\UploadDocumentRequest;
+use App\Http\Requests\Loans\CdpInvestmentCollateralRequest;
 use App\Http\Requests\Loans\CollateralRequest;
 use App\Http\Requests\Loans\PerfectCollateralRequest;
 use App\Http\Resources\Documents\DocumentResource;
@@ -36,7 +37,7 @@ class LoanCollateralController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:Loan Index', only: ['index']),
-            new Middleware('permission:Loan Collateral Manage', only: ['store', 'destroy']),
+            new Middleware('permission:Loan Collateral Manage', only: ['store', 'storeInvestment', 'destroy']),
             new Middleware('permission:Loan Collateral Verify', only: ['verify']),
             new Middleware('permission:Loan Collateral Perfect', only: ['perfect']),
             new Middleware('permission:Document Upload', only: ['uploadDocument']),
@@ -80,6 +81,32 @@ class LoanCollateralController extends Controller implements HasMiddleware
             ], 201);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to add collateral', $th);
+        }
+    }
+
+    /**
+     * A CDP Core investment as collateral: only the NIC and the policy number are given; the rest
+     * comes from CDP Core.
+     */
+    public function storeInvestment(CdpInvestmentCollateralRequest $request, string $publicId)
+    {
+        try {
+            $loan = Loan::where('public_id', $publicId)->first();
+
+            if (! $loan) {
+                return $this->notFound('Loan not found');
+            }
+
+            $data = $request->validated();
+            $collateral = $this->collaterals->addCdpInvestment($loan, $data['nic'], $data['policy_number'], $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'CDP investment added as collateral',
+                'data' => new CollateralResource($collateral->load(['owner'])),
+            ], 201);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to add the CDP investment', $th);
         }
     }
 
