@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Loans;
 
 use App\Models\Loan;
@@ -20,6 +22,8 @@ class LoanResource extends JsonResource
     {
         return (new LoanListResource($this->resource))->toArray($request) + [
             'purpose' => $this->purpose,
+            // Additive (guide v2.1): custom fields defined by the business.
+            'meta' => $this->meta ?? (object) [],
             'is_member_loan' => $this->isMemberLoan(),
             'terms' => [
                 'finance_basis' => $this->finance_basis->value,
@@ -44,13 +48,13 @@ class LoanResource extends JsonResource
                 'dsr_percent' => $this->dsr_percent,
             ],
             'dates' => [
-                'submitted_at' => $this->submitted_at?->toIso8601String(),
-                'approved_at' => $this->approved_at?->toIso8601String(),
-                'accepted_at' => $this->accepted_at?->toIso8601String(),
-                'disbursed_at' => $this->disbursed_at?->toIso8601String(),
+                'submitted_at' => $this->submitted_at?->toApiString(),
+                'approved_at' => $this->approved_at?->toApiString(),
+                'accepted_at' => $this->accepted_at?->toApiString(),
+                'disbursed_at' => $this->disbursed_at?->toApiString(),
                 'first_due_date' => $this->first_due_date?->toDateString(),
                 'maturity_date' => $this->maturity_date?->toDateString(),
-                'closed_at' => $this->closed_at?->toIso8601String(),
+                'closed_at' => $this->closed_at?->toApiString(),
             ],
             'closure_reason' => $this->closure_reason?->value,
             'balances' => [

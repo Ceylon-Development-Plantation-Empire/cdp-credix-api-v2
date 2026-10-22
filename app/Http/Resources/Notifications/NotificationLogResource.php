@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Notifications;
 
 use App\Models\NotificationLog;
@@ -24,8 +26,8 @@ class NotificationLogResource extends JsonResource
             'loan' => $this->whenLoaded('loan', fn () => $this->loan ? ['public_id' => $this->loan->public_id, 'loan_no' => $this->loan->loan_no ?? $this->loan->application_no] : null),
             'status' => $this->status->value,
             'error' => $this->error,
-            'sent_at' => $this->sent_at?->toIso8601String(),
-            'created_at' => $this->created_at?->toIso8601String(),
+            'sent_at' => $this->sent_at?->toApiString(),
+            'created_at' => $this->created_at?->toApiString(),
         ];
     }
 }

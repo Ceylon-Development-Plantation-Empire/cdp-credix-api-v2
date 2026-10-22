@@ -1,7 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests;
 
+use App\Enums\LookupType;
+use App\Rules\LookupCode;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -19,7 +24,7 @@ class UpdateDesignationRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
@@ -29,7 +34,7 @@ class UpdateDesignationRequest extends FormRequest
             'name' => 'sometimes|string|max:255',
             'code' => 'sometimes|string|max:10|unique:designations,code,'.$id,
             'department_id' => 'sometimes|exists:departments,id',
-            'level' => 'sometimes|in:entry,mid,senior,lead,executive,Manager,Director',
+            'level' => ['sometimes', 'string', new LookupCode(LookupType::DesignationLevel)],
             'description' => 'nullable|string',
             'is_active' => 'sometimes|boolean',
         ];

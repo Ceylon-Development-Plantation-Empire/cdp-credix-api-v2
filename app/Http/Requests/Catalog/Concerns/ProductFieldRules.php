@@ -1,14 +1,17 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests\Catalog\Concerns;
 
 use App\Enums\ChargeCalculation;
 use App\Enums\ChargeCollection;
 use App\Enums\ChargeRecurrence;
-use App\Enums\ChargeType;
-use App\Enums\CollateralType;
+use App\Enums\LookupType;
 use App\Enums\PricingMethod;
 use App\Enums\RepaymentFrequency;
+use App\Rules\LookupCode;
+use App\Support\Lookups\CustomFields;
 use Illuminate\Validation\Rule;
 
 /**
@@ -27,7 +30,8 @@ trait ProductFieldRules
      */
     protected function productRules(string $presence): array
     {
-        return [
+        // Custom product fields defined as data (lookups custom_field.product); meta is replaced as a whole.
+        return CustomFields::rules(LookupType::ProductField) + [
             'name' => [$presence, 'string', 'max:150'],
             'description' => ['nullable', 'string', 'max:2000'],
             'category_slug' => [$presence, 'string', Rule::exists('product_categories', 'slug')],
@@ -63,7 +67,8 @@ trait ProductFieldRules
     protected function chargeRules(string $prefix): array
     {
         return [
-            "{$prefix}.*.charge_type" => ['required', Rule::enum(ChargeType::class), 'distinct'],
+            // Fee types are data (charge_types); only active ones can be added to a product.
+            "{$prefix}.*.charge_type" => ['required', 'string', Rule::exists('charge_types', 'code')->where('is_active', true), 'distinct'],
             "{$prefix}.*.calculation" => ['required', Rule::enum(ChargeCalculation::class)],
             "{$prefix}.*.value" => ['required', 'decimal:0,4', 'min:0', 'max:99999999'],
             "{$prefix}.*.min_amount" => ['nullable', 'decimal:0,2', 'min:0'],
@@ -81,7 +86,7 @@ trait ProductFieldRules
     protected function collateralRuleRules(string $prefix): array
     {
         return [
-            "{$prefix}.*.collateral_type" => ['required', Rule::enum(CollateralType::class), 'distinct'],
+            "{$prefix}.*.collateral_type" => ['required', 'string', new LookupCode(LookupType::CollateralType), 'distinct'],
             "{$prefix}.*.max_ltv_percent" => ['required', 'decimal:0,2', 'min:0.01', 'max:100'],
             "{$prefix}.*.is_mandatory" => ['sometimes', 'boolean'],
         ];

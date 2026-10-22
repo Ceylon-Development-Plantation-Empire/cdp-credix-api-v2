@@ -1,9 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests\Groups;
 
 use App\Enums\BorrowerGroupStatus;
 use App\Http\Requests\Concerns\FormatsValidationErrors;
+use App\Support\BusinessDate;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -30,7 +33,7 @@ class BorrowerGroupRequest extends FormRequest
             'branch_id' => $creating
                 ? ['required', 'integer', Rule::exists('branches', 'id')->where('is_active', true)]
                 : ['prohibited'],
-            'formed_on' => [$presence, 'date_format:Y-m-d', 'before_or_equal:today'],
+            'formed_on' => [$presence, 'date_format:Y-m-d', 'before_or_equal:'.BusinessDate::today()->toDateString()],
             'meeting_day' => ['nullable', Rule::in(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])],
             'status' => $creating ? ['prohibited'] : ['sometimes', Rule::enum(BorrowerGroupStatus::class)],
         ];

@@ -1,15 +1,28 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests;
 
-use Illuminate\Contracts\Validation\Validator;
+use App\Http\Requests\Concerns\FormatsValidationErrors;
+use App\Models\User;
+use App\Rules\UniqueEmployeeIdNumber;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 
+/**
+ * PUT /users/{id}: any subset of the create fields.
+ *
+ * A password set here is an administrator reset: the user must choose their own afterwards
+ * (must_change_password) and every existing session of that user ends.
+ */
 class UpdateUserRequest extends FormRequest
 {
+    use FormatsValidationErrors;
+
     /**
-     * Determine if the user is authorized to make this request.
+     * Permission "User Update" is checked by the controller middleware; the admin-only rule by UserPolicy.
      */
     public function authorize(): bool
     {
@@ -17,60 +30,34 @@ class UpdateUserRequest extends FormRequest
     }
 
     /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, list<mixed>>
      */
     public function rules(): array
     {
-        $id = $this->route('user');
-        $userObj = \App\Models\User::find($id);
-        $employeeId = $userObj?->employee_id ?? 'NULL';
+        $id = (int) $this->route('user');
+        $employeeId = User::query()->whereKey($id)->value('employee_id');
 
         return [
-            'name' => 'sometimes|string|max:255',
-            'username' => 'sometimes|string|max:255|unique:users,username,'.$id,
-            'email' => 'nullable|email|max:255|unique:users,email,'.$id,
-            'password' => 'sometimes|string|min:8|regex:/[A-Z]/|regex:/[a-z]/|regex:/[0-9]/|regex:/[@$!%*#?&]/',
-            'user_type' => 'sometimes|in:admin,staff',
-            'role' => 'sometimes|string|exists:roles,name',
+            'name' => ['sometimes', 'string', 'max:150'],
+            'username' => ['sometimes', 'nullable', 'string', 'max:60', Rule::unique('users', 'username')->ignore($id)],
+            'email' => ['sometimes', 'email:rfc', 'max:150', Rule::unique('users', 'email')->ignore($id)],
+            'phone' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'password' => ['sometimes', 'string', 'max:255', Password::defaults()],
+            'user_type' => ['sometimes', 'in:admin,staff'],
+            'role' => ['sometimes', 'string', 'exists:roles,name'],
 
-            // Staff specific validation (embedded employee details)
-            'employee_code' => 'sometimes|string|unique:employees,employee_code,'.$employeeId,
-            'id_number' => 'sometimes|string|unique:employees,id_number,'.$employeeId,
-            'phone' => 'nullable|string',
-            'branch_id' => 'nullable|exists:branches,id',
-            'zonal_id' => 'nullable|exists:org_units,id,unit_type,zone',
-            'region_id' => 'nullable|exists:org_units,id,unit_type,region',
-            'province_id' => 'nullable|exists:org_units,id,unit_type,province',
-            'designation_id' => 'nullable|exists:designations,id',
-            'reporting_manager_id' => 'nullable|exists:employees,id',
+            /* Staff: the embedded employee record */
+            'employee_code' => ['sometimes', 'string', 'max:30', Rule::unique('employees', 'employee_code')->ignore($employeeId)],
+            'id_number' => ['sometimes', 'string', 'max:30', new UniqueEmployeeIdNumber($employeeId)],
+            'branch_id' => ['nullable', 'exists:branches,id'],
+            'zonal_id' => ['nullable', 'exists:org_units,id,unit_type,zone'],
+            'region_id' => ['nullable', 'exists:org_units,id,unit_type,region'],
+            'province_id' => ['nullable', 'exists:org_units,id,unit_type,province'],
+            'designation_id' => ['sometimes', 'filled', 'exists:designations,id'],
+            'reporting_manager_id' => ['nullable', 'exists:employees,id'],
 
-            'is_active' => 'sometimes|boolean',
-            'can_login' => 'sometimes|boolean',
+            'is_active' => ['sometimes', 'boolean'],
+            'can_login' => ['sometimes', 'boolean'],
         ];
-    }
-
-    public function bodyParameters()
-    {
-        return [];
-    }
-
-    protected function failedValidation(Validator $validator)
-    {
-        $errorMessages = $validator->errors();
-        $fieldErrors = collect($errorMessages->getMessages())->map(function ($messages, $field) {
-            return [
-                'field' => $field,
-                'messages' => $messages,
-            ];
-        })->values();
-        $message = $fieldErrors->count() > 1
-            ? 'There are multiple validation errors. Please review the form and correct the issues.'
-            : 'There is an issue with the input for '.$fieldErrors->first()['field'].'.';
-        throw new HttpResponseException(response()->json([
-            'message' => $message,
-            'errors' => $fieldErrors,
-        ], 422));
     }
 }

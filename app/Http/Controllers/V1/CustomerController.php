@@ -1,10 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Enums\IdType;
+use App\Enums\LookupType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Customers\CreateCustomerRequest;
+use App\Http\Requests\Customers\CustomerIndexRequest;
+use App\Http\Requests\Customers\CustomerLookupRequest;
+use App\Http\Requests\Customers\EligibilityRequest;
 use App\Http\Requests\Customers\UpdateCustomerRequest;
 use App\Http\Resources\Customers\CustomerListResource;
 use App\Http\Resources\Customers\CustomerResource;
@@ -13,13 +19,12 @@ use App\Models\Product;
 use App\Services\Customers\CreditScoreService;
 use App\Services\Customers\CustomerService;
 use App\Services\Loans\EligibilityService;
+use App\Support\Lookups\LookupRegistry;
 use App\Traits\ActivityLogTrait;
 use App\Traits\HandlesApiErrors;
 use App\Traits\PaginatesResources;
-use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
-use Illuminate\Validation\Rule;
 
 /**
  * Customers are always loaded through the Customer model, whose branch scope hides customers of
@@ -38,17 +43,25 @@ class CustomerController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Customer Index', only: ['index', 'show', 'lookup', 'eligibility', 'creditScore']),
+            new Middleware('permission:Customer Index', only: ['index', 'show', 'lookup', 'eligibility', 'creditScore', 'bankOptions']),
             new Middleware('permission:Customer Create', only: ['store']),
             new Middleware('permission:Customer Update', only: ['update']),
             new Middleware('permission:Customer Toggle Status', only: ['toggleStatus']),
         ];
     }
 
-    public function index(Request $request)
+    public function index(CustomerIndexRequest $request)
     {
         try {
-            $query = Customer::with('branch')->latest('id');
+            // ?sort=-credit_score ranks customers by score, best first (the Credit Scores screen).
+            // The sort value is whitelisted by CustomerIndexRequest.
+            $query = Customer::with('branch');
+            match ($request->validated('sort') ?? 'newest') {
+                'name' => $query->orderBy('full_name'),
+                'credit_score' => $query->orderByRaw('credit_score IS NULL')->orderBy('credit_score')->orderBy('id'),
+                '-credit_score' => $query->orderByRaw('credit_score IS NULL')->orderByDesc('credit_score')->orderBy('id'),
+                default => $query->latest('id'),
+            };
 
             if ($request->filled('search')) {
                 $query->search($request->search);
@@ -81,15 +94,25 @@ class CustomerController extends Controller implements HasMiddleware
     }
 
     /**
+     * Bank names for the bank-account dropdown: the active values of the "bank" lookup list,
+     * edited by administrators under Lookups.
+     */
+    public function bankOptions(LookupRegistry $lookups)
+    {
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Bank options retrieved successfully',
+            'data' => $lookups->selectableLabels(LookupType::Bank),
+        ], 200);
+    }
+
+    /**
      * "Is this person already registered?" — checked across all branches before creating a customer.
      */
-    public function lookup(Request $request)
+    public function lookup(CustomerLookupRequest $request)
     {
         try {
-            $data = $request->validate([
-                'id_type' => ['required', Rule::enum(IdType::class)],
-                'id_number' => ['required', 'string', 'max:30'],
-            ]);
+            $data = $request->validated();
 
             $match = $this->customers->lookup(IdType::from($data['id_type']), $data['id_number']);
 
@@ -107,13 +130,10 @@ class CustomerController extends Controller implements HasMiddleware
      * Can this person borrow on a product, and how many guarantees do they already give?
      * Every problem is listed at once (?product_slug=sme-loan&tenure=24).
      */
-    public function eligibility(Request $request, string $publicId, EligibilityService $eligibility)
+    public function eligibility(EligibilityRequest $request, string $publicId, EligibilityService $eligibility)
     {
         try {
-            $data = $request->validate([
-                'product_slug' => ['required', 'string', Rule::exists('products', 'slug')->whereNull('deleted_at')],
-                'tenure' => ['nullable', 'integer', 'min:1', 'max:600'],
-            ]);
+            $data = $request->validated();
 
             $customer = Customer::where('public_id', $publicId)->first();
 

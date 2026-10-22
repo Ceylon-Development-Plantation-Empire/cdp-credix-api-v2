@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Loans;
 
 use App\Models\LoanActivity;
@@ -20,7 +22,7 @@ class LoanActivityResource extends JsonResource
             'to_status' => $this->to_status?->value,
             'remarks' => $this->remarks,
             'performed_by' => $this->whenLoaded('performer', fn () => $this->performer ? ['id' => $this->performer->id, 'name' => $this->performer->name] : null),
-            'performed_at' => $this->performed_at->toIso8601String(),
+            'performed_at' => $this->performed_at->toApiString(),
         ];
     }
 }

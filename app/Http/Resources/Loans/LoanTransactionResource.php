@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Loans;
 
 use App\Models\LoanTransaction;
@@ -38,7 +40,7 @@ class LoanTransactionResource extends JsonResource
                 'amount' => (string) $a->amount,
             ])->values()),
             'posted_by' => $this->whenLoaded('poster', fn () => $this->poster ? ['name' => $this->poster->name] : null),
-            'created_at' => $this->created_at?->toIso8601String(),
+            'created_at' => $this->created_at?->toApiString(),
         ];
     }
 }

@@ -1,28 +1,41 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CreateUserRequest;
 use App\Http\Requests\UpdateUserRequest;
-use App\Mail\UserCreateMail;
-use App\Models\Employee;
 use App\Models\User;
-use App\Traits\ActivityLogTrait;
+use App\Policies\UserPolicy;
+use App\Services\Users\UserService;
+use App\Traits\HandlesApiErrors;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
 
+/**
+ * Back-office user accounts (API guide: Users, roles & staff). Response shapes are the starter
+ * kit's: the user model array with its employee relations, role pivots removed.
+ *
+ * Permissions per action (middleware) + UserPolicy for the admin-account and self rules; the
+ * work is done by UserService.
+ */
 class UserController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait;
+    use HandlesApiErrors;
 
+    public function __construct(
+        protected UserService $users,
+        protected UserPolicy $policy,
+    ) {}
+
+    /**
+     * @return list<Middleware>
+     */
     public static function middleware(): array
     {
         return [
@@ -34,485 +47,176 @@ class UserController extends Controller implements HasMiddleware
         ];
     }
 
-    public function index(Request $request)
+    /**
+     * GET /users: paginated, filterable by search, user_type, role, branch_id and is_active.
+     */
+    public function index(Request $request): JsonResponse
     {
-        try {
-            $perPage = min((int) $request->get('per_page', 15), 100);
-            $query = User::with(['employee.branch', 'employee.zonal', 'employee.region', 'employee.province', 'employee.reportingManager.user', 'employee.designation', 'roles', 'permissions']);
+        $query = User::with(UserService::SCREEN_RELATIONS)
+            ->when($request->filled('search'), function (Builder $q) use ($request) {
+                $search = (string) $request->input('search');
+                $q->where(fn (Builder $b) => $b->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('username', 'like', "%{$search}%"));
+            })
+            ->when($request->filled('user_type'), fn (Builder $q) => $q->where('user_type', $request->input('user_type')))
+            ->when($request->filled('role'), fn (Builder $q) => $q->whereHas('roles', fn ($r) => $r->where('name', $request->input('role'))))
+            ->when($request->filled('branch_id'), fn (Builder $q) => $q->whereHas('employee', fn ($e) => $e->where('branch_id', $request->input('branch_id'))))
+            ->when($request->has('is_active'), fn (Builder $q) => $q->where('is_active', $request->boolean('is_active')));
 
-            if ($request->has('search')) {
-                $search = $request->search;
-                $query->where(function (Builder $builder) use ($search) {
-                    $builder->where('name', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%")
-                        ->orWhere('username', 'like', "%{$search}%");
-                });
-            }
+        $users = $query->paginate(min((int) $request->get('per_page', 15), 100));
+        $users->getCollection()->transform(fn (User $user) => $this->present($user));
 
-            if ($request->has('user_type')) {
-                $query->where('user_type', $request->user_type);
-            }
-
-            if ($request->has('role')) {
-                $roleName = $request->role;
-                $query->whereHas('roles', function ($q) use ($roleName) {
-                    $q->where('name', $roleName);
-                });
-            }
-
-            if ($request->has('branch_id')) {
-                $query->whereHas('employee', function ($q) use ($request) {
-                    $q->where('branch_id', $request->branch_id);
-                });
-            }
-
-            if ($request->has('is_active')) {
-                $request->boolean('is_active') ? $query->where('is_active', true) : $query->where('is_active', false);
-            }
-
-            $users = $query->paginate($perPage);
-
-            // Transform data to hide pivot
-            $users->getCollection()->transform(function ($user) {
-                $userData = $user->toArray();
-                if (isset($userData['roles'])) {
-                    foreach ($userData['roles'] as &$role) {
-                        unset($role['pivot']);
-                    }
-                }
-
-                return $userData;
-            });
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Users retrieved successfully',
-                'data' => $users,
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to retrieve users',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
-        }
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Users retrieved successfully',
+            'data' => $users,
+        ], 200);
     }
 
-    public function store(CreateUserRequest $request)
+    /**
+     * POST /users. When no password was given (staff), the generated temporary password is in
+     * data.temporary_password, shown once to the administrator and never stored in clear.
+     */
+    public function store(CreateUserRequest $request): JsonResponse
     {
-        DB::beginTransaction();
-        try {
-            $currentUser = auth('api')->user();
-            $data = $request->validated();
+        $data = $request->validated();
 
-            // Restrict admin user creation to Super Admins only
-            if ($data['user_type'] === 'admin') {
-                if (! $currentUser || ! $currentUser->hasRole('Super Admin')) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Only Super Admin can create admin users',
-                    ], 403);
-                }
-            }
-
-            // Create Employee first if user_type is staff
-            if ($data['user_type'] === 'staff') {
-                $nameParts = explode(' ', $data['name']);
-                $fName = $nameParts[0];
-                $lName = count($nameParts) > 1 ? end($nameParts) : $fName;
-
-                $employeeData = [
-                    'f_name' => $request->input('f_name', $fName),
-                    'l_name' => $request->input('l_name', $lName),
-                    'full_name' => $request->input('full_name', $data['name']),
-                    'name_with_initials' => $request->input('name_with_initials', $data['name']),
-                    'employee_code' => $data['employee_code'],
-                    'employee_type' => $request->input('employee_type', 'permanent'),
-                    'id_type' => $request->input('id_type', 'nic'),
-                    'id_number' => $data['id_number'],
-                    'date_of_birth' => $request->input('date_of_birth', '2000-01-01'),
-                    'email' => $data['email'] ?? ($data['id_number'].'@example.com'),
-                    'phone' => $data['phone'] ?? null,
-                    'phone_primary' => $data['phone'] ?? '0000000000',
-                    'branch_id' => $data['branch_id'] ?? null,
-                    'zonal_id' => $data['zonal_id'] ?? null,
-                    'region_id' => $data['region_id'] ?? null,
-                    'province_id' => $data['province_id'] ?? null,
-                    'designation_id' => $data['designation_id'] ?? null,
-                    'reporting_manager_id' => $data['reporting_manager_id'] ?? null,
-                ];
-
-                $employee = Employee::create($employeeData);
-
-                // Generate random password instead of using id_number
-                $generatedPassword = Str::random(12);
-
-                $data['employee_id'] = $employee->id;
-                $data['username'] = $data['id_number'];
-                $data['password'] = Hash::make($data['id_number']);
-            } else {
-                // For admin users
-                $data['employee_id'] = null;
-                $data['password'] = Hash::make($data['password']);
-            }
-
-            $user = User::create($data);
-
-            // Assign Role
-            if (isset($data['role'])) {
-                $user->assignRole($data['role']);
-            }
-
-            DB::commit();
-
-            // Send Email
-            try {
-                // Load relationships for enriched email data
-                $user->load(['employee.branch', 'employee.zonal', 'employee.region', 'employee.province', 'employee.reportingManager.user', 'employee.designation']);
-
-                // Prepare email data
-                $emailData = [
-                    'user' => [
-                        'id' => $user->id,
-                        'name' => $user->name,
-                        'username' => $user->username,
-                        'email' => $user->email,
-                        'user_type' => $user->user_type,
-                        'email_verified_at' => $user->email_verified_at,
-                    ],
-                    'password' => ($user->user_type === 'staff') ? $data['id_number'] : $request->password,
-                    'role' => $data['role'] ?? null,
-                    'created_by' => $currentUser ? $currentUser->name : 'System',
-                    'login_url' => trim(config('app.frontend_url') ?? config('app.url')),
-                ];
-
-                // Only add relationships if they exist
-                if ($user->parent) {
-                    $emailData['parent_name'] = $user->parent->name;
-                }
-
-                if ($user->employee && $user->employee->designation) {
-                    $emailData['designation_name'] = $user->employee->designation->name;
-                }
-
-                if ($user->branch) {
-                    $emailData['branch_name'] = $user->branch->name;
-                }
-
-                if ($user->zone) {
-                    $emailData['zone_name'] = $user->zone->name;
-                }
-
-                if ($user->region) {
-                    $emailData['region_name'] = $user->region->name;
-                }
-
-                if ($user->province) {
-                    $emailData['province_name'] = $user->province->name;
-                }
-
-                Mail::to($user->email)->send(new UserCreateMail($emailData));
-
-                $this->logActivity('EMAIL_SENT', 'User', "User login credentials email sent successfully to: {$user->email}", ['user_id' => $user->id]);
-            } catch (\Throwable $th) {
-                $this->logActivity('EMAIL_FAILED', 'User', "Failed to send user creation email: {$th->getMessage()}", null, 'error');
-            }
-
-            $this->logActivity('CREATE', 'User', "Created user: {$user->username}", $data);
-
-            $userData = $user->toArray();
-            if (isset($userData['roles'])) {
-                foreach ($userData['roles'] as &$role) {
-                    unset($role['pivot']);
-                }
-            }
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'User created successfully',
-                'data' => $userData,
-            ], 201);
-        } catch (\Throwable $th) {
-            DB::rollBack();
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to create user',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
+        if (! $this->policy->create($request->user(), $data['user_type'])) {
+            return $this->forbidden('Only Super Admin can create admin users');
         }
+
+        $result = $this->users->create($data, $request->user());
+        $user = $result['user']->load(UserService::SCREEN_RELATIONS);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User created successfully',
+            'data' => $this->present($user) + array_filter(['temporary_password' => $result['temporary_password']]),
+        ], 201);
     }
 
-    public function show(string $id)
+    /**
+     * GET /users/{id}.
+     */
+    public function show(string $id): JsonResponse
     {
-        try {
-            $user = User::with(['employee.branch', 'employee.zonal', 'employee.region', 'employee.province', 'employee.reportingManager.user', 'employee.subordinates.user', 'employee.designation', 'roles', 'permissions'])->find($id);
+        $user = User::with([...UserService::SCREEN_RELATIONS, 'employee.subordinates.user'])->find($id);
 
-            if (! $user) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'User not found',
-                ], 404);
-            }
-
-            $userData = $user->toArray();
-            if (isset($userData['roles'])) {
-                foreach ($userData['roles'] as &$role) {
-                    unset($role['pivot']);
-                }
-            }
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'User retrieved successfully',
-                'data' => $userData,
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to retrieve user',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
+        if (! $user) {
+            return $this->notFound('User not found');
         }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User retrieved successfully',
+            'data' => $this->present($user),
+        ], 200);
     }
 
-    public function update(UpdateUserRequest $request, string $id)
+    /**
+     * PUT /users/{id}.
+     */
+    public function update(UpdateUserRequest $request, string $id): JsonResponse
     {
-        DB::beginTransaction();
-        try {
-            $currentUser = auth('api')->user();
-            $user = User::find($id);
+        $user = User::find($id);
 
-            if (! $user) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'User not found',
-                ], 404);
-            }
-
-            $data = $request->validated();
-
-            // Restrict admin user update to Super Admins only (both updating an existing admin or changing user_type to admin)
-            $isTargetingAdmin = ($user->user_type === 'admin') || (isset($data['user_type']) && $data['user_type'] === 'admin');
-            if ($isTargetingAdmin) {
-                if (! $currentUser || ! $currentUser->hasRole('Super Admin')) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Only Super Admin can manage admin users',
-                    ], 403);
-                }
-            }
-
-            if (isset($data['password'])) {
-                $data['password'] = Hash::make($data['password']);
-            } else {
-                unset($data['password']);
-            }
-
-            // Handle user_type logic and employee updates
-            $targetUserType = $data['user_type'] ?? $user->user_type;
-
-            if ($targetUserType === 'staff') {
-                $employeeDataFields = [
-                    'employee_code',
-                    'id_number',
-                    'phone',
-                    'branch_id',
-                    'zonal_id',
-                    'region_id',
-                    'province_id',
-                    'designation_id',
-                    'reporting_manager_id',
-                ];
-
-                $employeeData = array_intersect_key($data, array_flip($employeeDataFields));
-
-                if (isset($data['name'])) {
-                    $nameParts = explode(' ', $data['name']);
-                    $employeeData['f_name'] = $request->input('f_name', $nameParts[0]);
-                    $employeeData['l_name'] = $request->input('l_name', count($nameParts) > 1 ? end($nameParts) : $nameParts[0]);
-                    $employeeData['full_name'] = $request->input('full_name', $data['name']);
-                    $employeeData['name_with_initials'] = $request->input('name_with_initials', $data['name']);
-                }
-
-                if (isset($data['phone'])) {
-                    $employeeData['phone_primary'] = $data['phone'];
-                }
-
-                if ($user->employee) {
-                    // Update existing employee
-                    $user->employee->update($employeeData);
-                } else {
-                    // Create new employee if they were previously an admin
-                    $employeeData['employee_type'] = $request->input('employee_type', 'permanent');
-                    $employeeData['id_type'] = $request->input('id_type', 'nic');
-                    $employeeData['date_of_birth'] = $request->input('date_of_birth', '2000-01-01');
-                    if (! isset($employeeData['phone_primary'])) {
-                        $employeeData['phone_primary'] = '0000000000';
-                    }
-                    if (isset($data['email'])) {
-                        $employeeData['email'] = $data['email'];
-                    } else {
-                        $employeeData['email'] = ($data['id_number'] ?? $user->username).'@example.com';
-                    }
-
-                    $employee = Employee::create($employeeData);
-                    $data['employee_id'] = $employee->id;
-                }
-
-                // If id_number is updated, sync username
-                if (isset($data['id_number'])) {
-                    $data['username'] = $data['id_number'];
-                }
-            } else {
-                // If changing from staff to admin, detach and delete the old employee record
-                if ($user->employee) {
-                    $employee = $user->employee;
-                    $user->update(['employee_id' => null]);
-                    $employee->delete();
-                }
-                $data['employee_id'] = null;
-            }
-
-            $user->update($data);
-
-            if (isset($data['role'])) {
-                $user->syncRoles([$data['role']]);
-            }
-
-            DB::commit();
-
-            $user->refresh();
-            $user->load([
-                'employee.branch',
-                'employee.zonal',
-                'employee.region',
-                'employee.province',
-                'employee.reportingManager.user',
-                'employee.designation',
-                'roles',
-                'permissions',
-            ]);
-
-            $this->logActivity('UPDATE', 'User', "Updated user: {$user->username}", $data);
-
-            $userData = $user->toArray();
-            if (isset($userData['roles'])) {
-                foreach ($userData['roles'] as &$role) {
-                    unset($role['pivot']);
-                }
-            }
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'User updated successfully',
-                'data' => $userData,
-            ], 200);
-        } catch (\Throwable $th) {
-            DB::rollBack();
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to update user',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
+        if (! $user) {
+            return $this->notFound('User not found');
         }
+
+        $data = $request->validated();
+
+        if (! $this->policy->update($request->user(), $user, $data['user_type'] ?? null)) {
+            return $this->forbidden('Only Super Admin can manage admin users');
+        }
+
+        $user = $this->users->update($user, $data)->load(UserService::SCREEN_RELATIONS);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User updated successfully',
+            'data' => $this->present($user),
+        ], 200);
     }
 
-    public function destroy(string $id)
+    /**
+     * DELETE /users/{id}: deactivates the account permanently (users are never deleted; their
+     * name stays on approvals, postings and the audit trail).
+     */
+    public function destroy(Request $request, string $id): JsonResponse
     {
-        try {
-            $user = User::find($id);
+        $user = User::find($id);
 
-            if (! $user) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'User not found',
-                ], 404);
-            }
-
-            // Check if user is Super Admin
-            if (! Auth::user()->hasRole('Super Admin')) {
-                $this->logActivity('UNAUTHORIZED_DELETE', 'User', "Unauthorized user deletion attempt on ID: {$id}", ['target_user_id' => $id], 'warning');
-
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Only Super Admin can delete users',
-                ], 403);
-            }
-
-            // Prevent self-deletion
-            if ($user->id === Auth::id()) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'You cannot delete your own account',
-                ], 422);
-            }
-
-            $username = $user->username;
-            $employee = $user->employee;
-
-            $user->delete();
-
-            // Cascade delete employee record
-            if ($employee) {
-                $employee->delete();
-            }
-
-            $this->logActivity('DELETE', 'User', "Deleted user: {$username}");
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'User deleted successfully',
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to delete user',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
+        if (! $user) {
+            return $this->notFound('User not found');
         }
+
+        if ($user->id === $request->user()->id) {
+            return response()->json(['status' => 'error', 'message' => 'You cannot delete your own account'], 422);
+        }
+
+        if (! $this->policy->delete($request->user(), $user)) {
+            return $this->forbidden('Only Super Admin can delete users');
+        }
+
+        $this->users->deactivate($user);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User deleted successfully',
+        ], 200);
     }
 
-    public function toggleStatus(string $id)
+    /**
+     * PATCH /users/{id}/toggle-status.
+     */
+    public function toggleStatus(Request $request, string $id): JsonResponse
     {
-        try {
-            $user = User::find($id);
+        $user = User::find($id);
 
-            if (! $user) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'User not found',
-                ], 404);
-            }
-
-            // Prevent self-deactivation
-            if ($user->id === Auth::id()) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'You cannot deactivate your own account',
-                ], 422);
-            }
-
-            $user->is_active = ! $user->is_active;
-            $user->save();
-
-            $this->logActivity('TOGGLE_STATUS', 'User', "Toggled user status: {$user->username} (".($user->is_active ? 'Active' : 'Inactive').')');
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'User status updated successfully',
-                'data' => [
-                    'id' => $user->id,
-                    'is_active' => $user->is_active,
-                ],
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to toggle user status',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
+        if (! $user) {
+            return $this->notFound('User not found');
         }
+
+        if ($user->id === $request->user()->id) {
+            return response()->json(['status' => 'error', 'message' => 'You cannot deactivate your own account'], 422);
+        }
+
+        if (! $this->policy->toggleStatus($request->user(), $user)) {
+            return $this->forbidden('Only Super Admin can manage admin users');
+        }
+
+        $user = $this->users->toggleStatus($user);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User status updated successfully',
+            'data' => ['id' => $user->id, 'is_active' => $user->is_active],
+        ], 200);
+    }
+
+    /**
+     * The starter's user array with the role pivots removed.
+     *
+     * @return array<string, mixed>
+     */
+    protected function present(User $user): array
+    {
+        $data = $user->toArray();
+
+        foreach ($data['roles'] ?? [] as $i => $role) {
+            unset($data['roles'][$i]['pivot']);
+        }
+
+        return $data;
+    }
+
+    /**
+     * The starter's 403 body.
+     */
+    protected function forbidden(string $message): JsonResponse
+    {
+        return response()->json(['status' => 'error', 'message' => $message], 403);
     }
 }

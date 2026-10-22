@@ -1,11 +1,15 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Http\Controllers\V1\ActivityLogController;
 use App\Http\Controllers\V1\AgencyCaseController;
 use App\Http\Controllers\V1\ApprovalRequestController;
 use App\Http\Controllers\V1\AuthController;
 use App\Http\Controllers\V1\BorrowerGroupController;
 use App\Http\Controllers\V1\BranchController;
+use App\Http\Controllers\V1\ChargeTypeController;
+use App\Http\Controllers\V1\CollateralTypeController;
 use App\Http\Controllers\V1\CountryController;
 use App\Http\Controllers\V1\CustomerBankAccountController;
 use App\Http\Controllers\V1\CustomerController;
@@ -25,6 +29,7 @@ use App\Http\Controllers\V1\GlReportController;
 use App\Http\Controllers\V1\GoldLoanRenewalController;
 use App\Http\Controllers\V1\GroupController;
 use App\Http\Controllers\V1\ImportController;
+use App\Http\Controllers\V1\LendingMarginPlanController;
 use App\Http\Controllers\V1\LoanCollateralController;
 use App\Http\Controllers\V1\LoanController;
 use App\Http\Controllers\V1\LoanDisbursementController;
@@ -33,17 +38,20 @@ use App\Http\Controllers\V1\LoanPartyController;
 use App\Http\Controllers\V1\LoanServicingController;
 use App\Http\Controllers\V1\LoanWorkflowController;
 use App\Http\Controllers\V1\LoanWriteOffController;
+use App\Http\Controllers\V1\LookupController;
 use App\Http\Controllers\V1\NotificationController;
 use App\Http\Controllers\V1\PaymentController;
 use App\Http\Controllers\V1\PermissionController;
 use App\Http\Controllers\V1\ProductCategoryController;
 use App\Http\Controllers\V1\ProductController;
+use App\Http\Controllers\V1\ProfileController;
 use App\Http\Controllers\V1\ProvinceController;
 use App\Http\Controllers\V1\RecoveryCaseController;
 use App\Http\Controllers\V1\RegionController;
 use App\Http\Controllers\V1\ReportController;
 use App\Http\Controllers\V1\RoleController;
 use App\Http\Controllers\V1\SettingController;
+use App\Http\Controllers\V1\StaffDirectoryController;
 use App\Http\Controllers\V1\TemplateController;
 use App\Http\Controllers\V1\UserController;
 use App\Http\Controllers\V1\ZonalController;
@@ -53,23 +61,27 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     Route::post('login', [AuthController::class, 'login'])->middleware('throttle:login');
+    // Second step while SMS 2FA is switched on (setting security.staff_login_otp).
+    Route::post('login/verify-otp', [AuthController::class, 'verifyOtp'])->middleware('throttle:login');
 });
 
 /* external recovery agencies: only the cases assigned to them */
-Route::middleware(['auth:api', 'user.type:agency'])->prefix('v1/agency')->group(function () {
+Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:agency'])->prefix('v1/agency')->group(function () {
     Route::get('recovery-cases', [AgencyCaseController::class, 'index']);
     Route::get('recovery-cases/{publicId}', [AgencyCaseController::class, 'show']);
     Route::post('recovery-cases/{publicId}/activities', [AgencyCaseController::class, 'addActivity']);
 });
 
 /* routes for any logged-in user (staff, agency) */
-Route::middleware(['auth:api'])->prefix('v1')->group(function () {
+Route::middleware(['auth:api', 'token.current', 'password.changed'])->prefix('v1')->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::get('me', [AuthController::class, 'me']);
+    Route::put('me', [ProfileController::class, 'update']);
+    Route::post('password/change', [ProfileController::class, 'changePassword'])->middleware('throttle:password-change');
 });
 
 /* back-office routes: closed to agency logins even where an endpoint has no permission */
-Route::middleware(['auth:api', 'user.type:admin,staff'])->prefix('v1')->group(function () {
+Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:admin,staff'])->prefix('v1')->group(function () {
 
     Route::get('permissions/list', [PermissionController::class, 'getPermissionList']);
     Route::apiResource('permissions', PermissionController::class);
@@ -77,6 +89,7 @@ Route::middleware(['auth:api', 'user.type:admin,staff'])->prefix('v1')->group(fu
     Route::get('roles/list/', [RoleController::class, 'getAvailableRoles']);
     Route::apiResource('roles', RoleController::class);
 
+    Route::get('users/list', [StaffDirectoryController::class, 'users']);
     Route::patch('users/{id}/toggle-status', [UserController::class, 'toggleStatus']);
     Route::apiResource('users', UserController::class);
 
@@ -118,14 +131,15 @@ Route::middleware(['auth:api', 'user.type:admin,staff'])->prefix('v1')->group(fu
     // Departments
     Route::apiResource('departments', DepartmentController::class)->where(['department' => '[0-9]+']);
     Route::prefix('departments')->group(function () {
-        Route::get('{id}/designations', [DepartmentController::class, 'getDesignations']);
+        Route::get('list', [DepartmentController::class, 'getDepartmentList']);
+        Route::get('{id}/designations', [DepartmentController::class, 'getDesignations'])->whereNumber('id');
         Route::patch('{id}/toggle-status', [DepartmentController::class, 'toggleStatus']);
     });
 
     // Designations
     Route::apiResource('designations', DesignationController::class)->where(['designation' => '[0-9]+']);
     Route::prefix('designations')->group(function () {
-        Route::get('list', [DesignationController::class, 'getActiveList']);
+        Route::get('list', [DesignationController::class, 'getDesignationList']);
         Route::patch('{id}/toggle-status', [DesignationController::class, 'toggleStatus']);
     });
 
@@ -138,6 +152,7 @@ Route::middleware(['auth:api', 'user.type:admin,staff'])->prefix('v1')->group(fu
 
     // Employee Hierarchy
     Route::prefix('employees')->group(function () {
+        Route::get('list', [StaffDirectoryController::class, 'employees']);
         Route::get('{id}/manager-history', [EmployeeHierarchyController::class, 'getHistory']);
         Route::post('{id}/reassign-manager', [EmployeeHierarchyController::class, 'reassignManager']);
         Route::get('{id}/hierarchy-as-of', [EmployeeHierarchyController::class, 'getHierarchyAsOf']);
@@ -176,6 +191,40 @@ Route::middleware(['auth:api', 'user.type:admin,staff'])->prefix('v1')->group(fu
         Route::get('/', [SettingController::class, 'index']);
         Route::get('{key}', [SettingController::class, 'show']);
         Route::put('{key}', [SettingController::class, 'update']);
+    });
+
+    // Code lists managed by the business (banks, categories, relationships, branch / employee
+    // types, designation levels, custom fields). Values are deactivated, never deleted.
+    Route::prefix('lookups')->group(function () {
+        Route::get('types', [LookupController::class, 'types']);
+        Route::get('options/{type}', [LookupController::class, 'options']);
+        Route::get('/', [LookupController::class, 'index']);
+        Route::post('/', [LookupController::class, 'store']);
+        Route::get('{id}', [LookupController::class, 'show'])->whereNumber('id');
+        Route::put('{id}', [LookupController::class, 'update'])->whereNumber('id');
+    });
+
+    // Fee and charge types (upfront fees are data; late payment, early settlement and
+    // safekeeping are built in)
+    Route::prefix('charge-types')->group(function () {
+        Route::get('/', [ChargeTypeController::class, 'index']);
+        Route::post('/', [ChargeTypeController::class, 'store']);
+        Route::get('{code}', [ChargeTypeController::class, 'show']);
+        Route::put('{code}', [ChargeTypeController::class, 'update']);
+    });
+
+    // Collateral types (data: lookups of type collateral_type) with their fields, documents and plans,
+    // for the loan security step.
+    Route::get('collateral-types', [CollateralTypeController::class, 'index']);
+
+    // Lending-margin plans: named lending percentages per collateral type, chosen (optionally) when
+    // a collateral is added to a loan.
+    Route::prefix('lending-margin-plans')->group(function () {
+        Route::get('options', [LendingMarginPlanController::class, 'options']);
+        Route::get('/', [LendingMarginPlanController::class, 'index']);
+        Route::post('/', [LendingMarginPlanController::class, 'store']);
+        Route::get('{code}', [LendingMarginPlanController::class, 'show']);
+        Route::put('{code}', [LendingMarginPlanController::class, 'update']);
     });
 
     // Product Categories (General / Islamic → Standard Borrowing / Development Fund → …)
@@ -234,6 +283,7 @@ Route::middleware(['auth:api', 'user.type:admin,staff'])->prefix('v1')->group(fu
     Route::prefix('customers')->group(function () {
         Route::get('/', [CustomerController::class, 'index']);
         Route::get('lookup', [CustomerController::class, 'lookup']);
+        Route::get('bank-options', [CustomerController::class, 'bankOptions']);
         Route::post('/', [CustomerController::class, 'store']);
         Route::get('{publicId}', [CustomerController::class, 'show']);
         Route::get('{publicId}/eligibility', [CustomerController::class, 'eligibility']);

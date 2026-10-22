@@ -1,9 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Enums\PartyRole;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Documents\DocumentChecklistRequest;
 use App\Http\Requests\Documents\UploadDocumentRequest;
 use App\Http\Resources\Documents\DocumentResource;
 use App\Models\Customer;
@@ -15,7 +18,6 @@ use App\Traits\HandlesApiErrors;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
-use Illuminate\Validation\Rule;
 
 class CustomerDocumentController extends Controller implements HasMiddleware
 {
@@ -70,7 +72,8 @@ class CustomerDocumentController extends Controller implements HasMiddleware
             $document = $this->documents->upload(
                 $customer,
                 DocumentType::findBySlug($data['document_type_slug']),
-                $request->file('file'),
+                $request,
+                'file',
                 $data,
                 $request->user(),
             );
@@ -89,13 +92,10 @@ class CustomerDocumentController extends Controller implements HasMiddleware
      * Which documents this person still needs for a role (borrower, guarantor …),
      * optionally for a specific product. ?role=guarantor&product_slug=sme-loan
      */
-    public function checklist(Request $request, string $publicId)
+    public function checklist(DocumentChecklistRequest $request, string $publicId)
     {
         try {
-            $data = $request->validate([
-                'role' => ['sometimes', Rule::enum(PartyRole::class)],
-                'product_slug' => ['nullable', 'string', Rule::exists('products', 'slug')],
-            ]);
+            $data = $request->validated();
 
             $customer = Customer::where('public_id', $publicId)->first();
 

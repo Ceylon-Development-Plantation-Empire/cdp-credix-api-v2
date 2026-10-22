@@ -1,15 +1,29 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests;
 
-use Illuminate\Contracts\Validation\Validator;
+use App\Http\Requests\Concerns\FormatsValidationErrors;
+use App\Rules\UniqueEmployeeIdNumber;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Validation\Rules\Password;
 
+/**
+ * POST /users: create an admin or a staff login (staff also get their employee record).
+ *
+ * Changes from the starter kit (API guide v2.1):
+ * - email is required: it is the sign-in identifier (owner decision: email + password);
+ * - username is optional for every type (a display handle only);
+ * - password, when given, follows Password::defaults() (12+ characters, mixed case, number, symbol).
+ *   When it is left out for staff, a random temporary password is generated and returned once.
+ */
 class CreateUserRequest extends FormRequest
 {
+    use FormatsValidationErrors;
+
     /**
-     * Determine if the user is authorized to make this request.
+     * Permission "User Create" is checked by the controller middleware; the admin-only rule by UserPolicy.
      */
     public function authorize(): bool
     {
@@ -17,54 +31,31 @@ class CreateUserRequest extends FormRequest
     }
 
     /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, list<mixed>>
      */
     public function rules(): array
     {
         return [
-            'name' => 'required|string|max:255',
-            'username' => 'required_if:user_type,admin|nullable|string|max:255|unique:users,username',
-            'email' => 'nullable|email|max:255|unique:users,email',
-            'password' => 'required_if:user_type,admin|nullable|string|min:8|regex:/[A-Z]/|regex:/[a-z]/|regex:/[0-9]/|regex:/[@$!%*#?&]/',
-            'user_type' => 'required|in:admin,staff',
-            'role' => 'required|string|exists:roles,name',
+            'name' => ['required', 'string', 'max:150'],
+            'username' => ['nullable', 'string', 'max:60', 'unique:users,username'],
+            'email' => ['required', 'email:rfc', 'max:150', 'unique:users,email'],
+            'phone' => ['nullable', 'string', 'max:20'],
+            'password' => ['required_if:user_type,admin', 'nullable', 'string', 'max:255', Password::defaults()],
+            'user_type' => ['required', 'in:admin,staff'],
+            'role' => ['required', 'string', 'exists:roles,name'],
 
-            // Staff specific validation (embedded employee details)
-            'employee_code' => 'required_if:user_type,staff|nullable|string|unique:employees,employee_code',
-            'id_number' => 'required_if:user_type,staff|nullable|string|unique:employees,id_number',
-            'phone' => 'nullable|string',
-            'branch_id' => 'nullable|exists:branches,id',
-            'zonal_id' => 'nullable|exists:org_units,id,unit_type,zone',
-            'region_id' => 'nullable|exists:org_units,id,unit_type,region',
-            'province_id' => 'nullable|exists:org_units,id,unit_type,province',
-            'designation_id' => 'nullable|exists:designations,id',
-            'reporting_manager_id' => 'nullable|exists:employees,id',
+            /* Staff: the embedded employee record */
+            'employee_code' => ['required_if:user_type,staff', 'nullable', 'string', 'max:30', 'unique:employees,employee_code'],
+            'id_number' => ['required_if:user_type,staff', 'nullable', 'string', 'max:30', new UniqueEmployeeIdNumber],
+            'branch_id' => ['nullable', 'exists:branches,id'],
+            'zonal_id' => ['nullable', 'exists:org_units,id,unit_type,zone'],
+            'region_id' => ['nullable', 'exists:org_units,id,unit_type,region'],
+            'province_id' => ['nullable', 'exists:org_units,id,unit_type,province'],
+            'designation_id' => ['required_if:user_type,staff', 'nullable', 'exists:designations,id'],
+            'reporting_manager_id' => ['nullable', 'exists:employees,id'],
 
-            'is_active' => 'sometimes|boolean',
-            'can_login' => 'sometimes|boolean',
+            'is_active' => ['sometimes', 'boolean'],
+            'can_login' => ['sometimes', 'boolean'],
         ];
-    }
-
-    protected function failedValidation(Validator $validator)
-    {
-        $errorMessages = $validator->errors();
-
-        $fieldErrors = collect($errorMessages->getMessages())->map(function ($messages, $field) {
-            return [
-                'field' => $field,
-                'messages' => $messages,
-            ];
-        })->values();
-
-        $message = $fieldErrors->count() > 1
-            ? 'There are multiple validation errors. Please review the form and correct the issues.'
-            : 'There is an issue with the input for '.$fieldErrors->first()['field'].'.';
-
-        throw new HttpResponseException(response()->json([
-            'message' => $message,
-            'errors' => $fieldErrors,
-        ], 422));
     }
 }

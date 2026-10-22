@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Documents;
 
 use App\Models\Document;
@@ -27,9 +29,9 @@ class DocumentResource extends JsonResource
             'status' => $this->status->value,
             'rejection_reason' => $this->rejection_reason,
             'uploaded_by' => $this->whenLoaded('uploader', fn () => $this->uploader ? ['name' => $this->uploader->name] : null),
-            'uploaded_at' => $this->created_at?->toIso8601String(),
+            'uploaded_at' => $this->created_at?->toApiString(),
             'verified_by' => $this->whenLoaded('verifier', fn () => $this->verifier ? ['name' => $this->verifier->name] : null),
-            'verified_at' => $this->verified_at?->toIso8601String(),
+            'verified_at' => $this->verified_at?->toApiString(),
         ];
     }
 }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Settings;
 
 use App\Models\Setting;
@@ -20,7 +22,7 @@ class SettingResource extends JsonResource
             'value' => $this->typedValue(),
             'label' => $this->label,
             'description' => $this->description,
-            'updated_at' => $this->updated_at?->toIso8601String(),
+            'updated_at' => $this->updated_at?->toApiString(),
         ];
     }
 }

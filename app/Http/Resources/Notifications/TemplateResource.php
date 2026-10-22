@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Notifications;
 
 use App\Enums\NotificationEvent;
@@ -25,7 +27,7 @@ class TemplateResource extends JsonResource
             'body' => $this->body,
             'placeholders' => NotificationEvent::tryFrom($this->slug)?->placeholders() ?? [],
             'is_active' => $this->is_active,
-            'updated_at' => $this->updated_at?->toIso8601String(),
+            'updated_at' => $this->updated_at?->toApiString(),
         ];
     }
 }

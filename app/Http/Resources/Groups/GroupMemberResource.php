@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Groups;
 
 use App\Models\BorrowerGroupMember;
@@ -20,7 +22,7 @@ class GroupMemberResource extends JsonResource
                 'public_id' => $this->customer->public_id,
                 'customer_no' => $this->customer->customer_no,
                 'full_name' => $this->customer->full_name,
-                'id_number' => Mask::idNumber($this->customer->id_number_normalized),
+                'id_number' => Mask::idNumber($this->customer->normalizedIdNumber()),
             ]),
             'role' => $this->role->value,
             'joined_on' => $this->joined_on->toDateString(),

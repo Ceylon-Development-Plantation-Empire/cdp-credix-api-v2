@@ -1,8 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests\Accounting;
 
 use App\Http\Requests\Concerns\FormatsValidationErrors;
+use App\Support\BusinessDate;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -22,7 +25,7 @@ class ManualJournalRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'value_date' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'],
+            'value_date' => ['required', 'date_format:Y-m-d', 'before_or_equal:'.BusinessDate::today()->toDateString()],
             'narration' => ['required', 'string', 'min:3', 'max:255'],
             'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')],
             'lines' => ['required', 'array', 'min:2', 'max:50'],

@@ -1,9 +1,14 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests\Customers;
 
+use App\Enums\LookupType;
 use App\Http\Requests\Concerns\FormatsValidationErrors;
+use App\Support\Lookups\LookupRegistry;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * Create (POST) needs every required field; update (PUT) accepts any subset.
@@ -22,7 +27,8 @@ class BankAccountRequest extends FormRequest
         $presence = $this->isMethod('post') ? 'required' : 'sometimes';
 
         return [
-            'bank_name' => [$presence, 'string', 'max:100'],
+            // One spelling per bank (transfers and reports group by it): a name from the bank list (lookups).
+            'bank_name' => [$presence, 'string', 'max:150', Rule::in(app(LookupRegistry::class)->selectableLabels(LookupType::Bank))],
             'branch_name' => ['nullable', 'string', 'max:100'],
             'account_holder_name' => [$presence, 'string', 'max:150'],
             // Sri Lankan account numbers are digits only, 6 to 20 long depending on the bank.

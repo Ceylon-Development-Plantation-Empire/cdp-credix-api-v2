@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Enums\LoanActivityType;
@@ -238,6 +240,7 @@ class LoanController extends Controller implements HasMiddleware
             'parties.customer',
             'memberLoans.parties.customer',
             'collaterals.owner',
+            'collaterals.lendingMarginPlan',
         ]);
     }
 }

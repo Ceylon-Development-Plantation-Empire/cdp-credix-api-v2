@@ -1,8 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Loans;
 
 use App\Models\Collateral;
+use App\Support\Collateral\CollateralTypes;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -15,8 +18,13 @@ class CollateralResource extends JsonResource
     {
         return [
             'public_id' => $this->public_id,
-            'type' => $this->type->value,
-            'type_label' => $this->type->label(),
+            'type' => $this->type,
+            'type_label' => app(CollateralTypes::class)->label($this->type),
+            // Additive (v2.1): the plan the item was valued under; null = the product's lending %.
+            'lending_margin_plan' => $this->whenLoaded('lendingMarginPlan', fn () => $this->lendingMarginPlan ? [
+                'code' => $this->lendingMarginPlan->code,
+                'name' => $this->lendingMarginPlan->name,
+            ] : null),
             'description' => $this->description,
             'details' => $this->details,
             'owner' => $this->whenLoaded('owner', fn () => $this->owner ? [
@@ -25,6 +33,7 @@ class CollateralResource extends JsonResource
             ] : null),
             'market_value' => (string) $this->market_value,
             'forced_sale_value' => $this->forced_sale_value !== null ? (string) $this->forced_sale_value : null,
+            // The lending % this item was valued at (plan or product rule), fixed when it was added.
             'ltv_percent' => (string) $this->ltv_percent,
             'eligible_amount' => (string) $this->eligible_amount,
             'valued_on' => $this->valued_on->toDateString(),
@@ -32,9 +41,9 @@ class CollateralResource extends JsonResource
             'status' => $this->status->value,
             'registration_ref' => $this->registration_ref,
             'custody_ref' => $this->custody_ref,
-            'verified_at' => $this->verified_at?->toIso8601String(),
-            'perfected_at' => $this->perfected_at?->toIso8601String(),
-            'released_at' => $this->released_at?->toIso8601String(),
+            'verified_at' => $this->verified_at?->toApiString(),
+            'perfected_at' => $this->perfected_at?->toApiString(),
+            'released_at' => $this->released_at?->toApiString(),
         ];
     }
 }

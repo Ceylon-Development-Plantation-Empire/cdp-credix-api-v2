@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Loans;
 
 use App\Models\LoanParty;
@@ -21,12 +23,12 @@ class LoanPartyResource extends JsonResource
                 'public_id' => $this->customer->public_id,
                 'customer_no' => $this->customer->customer_no,
                 'full_name' => $this->customer->full_name,
-                'id_number' => Mask::idNumber($this->customer->id_number_normalized),
+                'id_number' => Mask::idNumber($this->customer->normalizedIdNumber()),
             ]),
             'relationship' => $this->relationship,
-            'consented_at' => $this->consented_at?->toIso8601String(),
-            'invoked_at' => $this->invoked_at?->toIso8601String(),
-            'released_at' => $this->released_at?->toIso8601String(),
+            'consented_at' => $this->consented_at?->toApiString(),
+            'invoked_at' => $this->invoked_at?->toApiString(),
+            'released_at' => $this->released_at?->toApiString(),
         ];
     }
 }

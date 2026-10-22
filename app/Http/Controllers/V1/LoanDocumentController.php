@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
@@ -61,7 +63,7 @@ class LoanDocumentController extends Controller implements HasMiddleware
             }
 
             $data = $request->validated();
-            $document = $this->documents->upload($loan, DocumentType::findBySlug($data['document_type_slug']), $request->file('file'), $data, $request->user());
+            $document = $this->documents->upload($loan, DocumentType::findBySlug($data['document_type_slug']), $request, 'file', $data, $request->user());
 
             return response()->json([
                 'status' => 'success',

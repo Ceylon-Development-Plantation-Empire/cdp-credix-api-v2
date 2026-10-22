@@ -1,14 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Loans\RenewalQuoteRequest;
 use App\Http\Requests\Loans\RenewGoldLoanRequest;
 use App\Http\Resources\Loans\LoanTransactionResource;
 use App\Models\Loan;
 use App\Services\Loans\GoldRenewalService;
 use App\Traits\HandlesApiErrors;
-use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
@@ -31,10 +33,10 @@ class GoldLoanRenewalController extends Controller implements HasMiddleware
         ];
     }
 
-    public function quote(Request $request, string $publicId)
+    public function quote(RenewalQuoteRequest $request, string $publicId)
     {
         try {
-            $data = $request->validate(['tenure' => ['nullable', 'integer', 'min:1', 'max:120']]);
+            $data = $request->validated();
             $loan = Loan::where('public_id', $publicId)->first();
 
             if (! $loan) {

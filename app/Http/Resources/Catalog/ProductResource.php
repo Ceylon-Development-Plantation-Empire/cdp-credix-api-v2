@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Catalog;
 
 use App\Models\Product;
@@ -56,17 +58,19 @@ class ProductResource extends JsonResource
             ],
             'status' => $this->status->value,
             'shariah' => $basis->requiresShariahApproval() ? [
-                'approved_at' => $this->shariah_approved_at?->toIso8601String(),
+                'approved_at' => $this->shariah_approved_at?->toApiString(),
                 'reference' => $this->shariah_reference,
             ] : null,
             'pending_approval' => $pending ? [
                 'public_id' => $pending->public_id,
                 'action' => $pending->action->value,
-                'requested_at' => $pending->created_at?->toIso8601String(),
+                'requested_at' => $pending->created_at?->toApiString(),
             ] : null,
             'charges' => ProductChargeResource::collection($this->whenLoaded('charges')),
             'collateral_rules' => ProductCollateralRuleResource::collection($this->whenLoaded('collateralRules')),
-            'updated_at' => $this->updated_at?->toIso8601String(),
+            // Additive (guide v2.1): custom fields defined by the business.
+            'meta' => $this->meta ?? (object) [],
+            'updated_at' => $this->updated_at?->toApiString(),
         ];
     }
 }

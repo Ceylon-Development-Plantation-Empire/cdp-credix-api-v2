@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Recovery;
 
 use App\Models\RecoveryCase;
@@ -44,9 +46,9 @@ class RecoveryCaseResource extends JsonResource
             'agent' => $this->whenLoaded('agent', fn () => $this->agent ? ['id' => $this->agent->id, 'name' => $this->agent->name] : null),
             'opened_dpd' => $this->opened_dpd,
             'opened_arrears' => (string) $this->opened_arrears,
-            'opened_at' => $this->opened_at->toIso8601String(),
-            'assigned_at' => $this->assigned_at?->toIso8601String(),
-            'closed_at' => $this->closed_at?->toIso8601String(),
+            'opened_at' => $this->opened_at->toApiString(),
+            'assigned_at' => $this->assigned_at?->toApiString(),
+            'closed_at' => $this->closed_at?->toApiString(),
             'outcome' => $this->outcome,
         ];
     }

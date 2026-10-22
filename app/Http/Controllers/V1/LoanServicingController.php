@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
@@ -13,9 +15,9 @@ use App\Models\Loan;
 use App\Services\Loans\EarlySettlementService;
 use App\Services\Loans\PenaltyService;
 use App\Services\Loans\RestructureService;
+use App\Support\BusinessDate;
 use App\Traits\HandlesApiErrors;
 use App\Traits\PaginatesResources;
-use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
@@ -79,7 +81,7 @@ class LoanServicingController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Settlement quote for today',
-                'data' => $this->settlements->quote($loan, CarbonImmutable::today()),
+                'data' => $this->settlements->quote($loan, BusinessDate::todayImmutable()),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to build settlement quote', $th);

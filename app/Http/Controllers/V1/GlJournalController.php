@@ -1,8 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Accounting\JournalExportRequest;
+use App\Http\Requests\Accounting\JournalIndexRequest;
 use App\Http\Requests\Accounting\ManualJournalRequest;
 use App\Http\Resources\Accounting\GlJournalResource;
 use App\Http\Resources\Approvals\ApprovalRequestResource;
@@ -14,7 +18,6 @@ use App\Support\BranchAccess;
 use App\Traits\HandlesApiErrors;
 use App\Traits\PaginatesResources;
 use Carbon\CarbonImmutable;
-use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
@@ -38,17 +41,10 @@ class GlJournalController extends Controller implements HasMiddleware
         ];
     }
 
-    public function index(Request $request)
+    public function index(JournalIndexRequest $request)
     {
         try {
-            $filters = $request->validate([
-                'source' => ['nullable', 'string', 'max:30'],
-                'status' => ['nullable', 'string', 'max:20'],
-                'branch_id' => ['nullable', 'integer'],
-                'loan_public_id' => ['nullable', 'string', 'ulid'],
-                'from' => ['nullable', 'date_format:Y-m-d'],
-                'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
-            ]);
+            $filters = $request->validated();
 
             $query = GlJournal::with(['branch', 'loan'])->latest('entry_date')->latest('id');
 
@@ -128,14 +124,10 @@ class GlJournalController extends Controller implements HasMiddleware
     /**
      * Posted journal lines as CSV for the accounting package (one year at most per file).
      */
-    public function export(Request $request)
+    public function export(JournalExportRequest $request)
     {
         try {
-            $filters = $request->validate([
-                'from' => ['required', 'date_format:Y-m-d'],
-                'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
-                'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
-            ]);
+            $filters = $request->validated();
 
             $from = CarbonImmutable::parse($filters['from']);
             $to = CarbonImmutable::parse($filters['to']);
@@ -144,7 +136,7 @@ class GlJournalController extends Controller implements HasMiddleware
                 return response()->json(['status' => 'error', 'code' => 'REPORT_PERIOD_TOO_LONG', 'message' => 'An export covers at most one year.'], 422);
             }
 
-            $rows = $this->reports->exportRows($from, $to, $filters['branch_id'] ?? null);
+            $rows = $this->reports->exportRows($from, $to, $request->filled('branch_id') ? $request->integer('branch_id') : null);
 
             return response()->streamDownload(function () use ($rows) {
                 $out = fopen('php://output', 'w');

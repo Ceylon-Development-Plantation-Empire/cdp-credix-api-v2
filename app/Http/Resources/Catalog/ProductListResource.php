@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Catalog;
 
 use App\Models\Product;
@@ -22,8 +24,12 @@ class ProductListResource extends JsonResource
             'finance_basis' => $this->category->finance_basis->value,
             'pricing_method' => $this->pricing_method->value,
             'default_rate' => $this->default_rate,
+            'min_rate' => $this->min_rate,
+            'max_rate' => $this->max_rate,
             'min_amount' => $this->min_amount,
             'max_amount' => $this->max_amount,
+            'min_tenure' => $this->min_tenure,
+            'max_tenure' => $this->max_tenure,
             'repayment_frequency' => $this->repayment_frequency->value,
             'borrower_types' => array_keys(array_filter([
                 'individual' => $this->allows_individual,

@@ -1,10 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Loans\ApproveLoanRequest;
 use App\Http\Requests\Loans\LoanRemarksRequest;
+use App\Http\Requests\Loans\OptionalRemarksRequest;
 use App\Http\Resources\Loans\LoanResource;
 use App\Models\Loan;
 use App\Services\Loans\LoanApplicationService;
@@ -58,9 +61,9 @@ class LoanWorkflowController extends Controller implements HasMiddleware
             fn (Loan $loan) => $this->review->returnForCorrection($loan, $request->validated('remarks'), $request->user()));
     }
 
-    public function verify(Request $request, string $publicId)
+    public function verify(OptionalRemarksRequest $request, string $publicId)
     {
-        $remarks = $request->validate(['remarks' => ['nullable', 'string', 'max:1000']])['remarks'] ?? null;
+        $remarks = $request->validated()['remarks'] ?? null;
 
         return $this->step($publicId, 'Application verified', 'Failed to verify application',
             fn (Loan $loan) => $this->review->verify($loan, $remarks, $request->user()));

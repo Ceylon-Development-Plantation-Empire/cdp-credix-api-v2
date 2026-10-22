@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Customers;
 
 use App\Models\CustomerFinancial;
@@ -25,7 +27,7 @@ class CustomerFinancialResource extends JsonResource
             'start_date' => $this->start_date?->toDateString(),
             'end_date' => $this->end_date?->toDateString(),
             'is_verified' => $this->is_verified,
-            'verified_at' => $this->verified_at?->toIso8601String(),
+            'verified_at' => $this->verified_at?->toApiString(),
         ];
     }
 }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Customers;
 
 use App\Enums\KycStatus;
@@ -28,7 +30,7 @@ class CustomerResource extends JsonResource
             'branch' => $this->whenLoaded('branch', fn () => ['id' => $this->branch->id, 'name' => $this->branch->name]),
             'identity' => [
                 'id_type' => $this->id_type->value,
-                'id_number' => $sensitive ? $this->id_number : Mask::idNumber($this->id_number_normalized),
+                'id_number' => $sensitive ? $this->id_number : Mask::idNumber($this->normalizedIdNumber()),
                 'full_name' => $this->full_name,
                 'name_with_initials' => $this->name_with_initials,
                 'date_of_birth' => $sensitive ? $this->date_of_birth->toDateString() : null,
@@ -45,6 +47,7 @@ class CustomerResource extends JsonResource
             'address' => [
                 'address_line_1' => $this->address_line_1,
                 'address_line_2' => $this->address_line_2,
+                'landmark' => $this->landmark,
                 'city' => $this->city,
                 'gn_division' => $this->gn_division,
                 'ds_division' => $this->ds_division,
@@ -57,14 +60,20 @@ class CustomerResource extends JsonResource
                 'occupation' => $this->occupation,
                 'employer_name' => $this->employer_name,
                 'employer_address' => $this->employer_address,
+                'employer_phone' => $phone($this->employer_phone),
+                'employer_email' => $sensitive ? $this->employer_email : Mask::email($this->employer_email),
                 'business_name' => $this->business_name,
                 'business_registration_no' => $this->business_registration_no,
+                'business_nature' => $this->business_nature,
+                'business_address' => $this->business_address,
+                'business_phone' => $phone($this->business_phone),
+                'business_email' => $sensitive ? $this->business_email : Mask::email($this->business_email),
             ],
             'kyc' => [
                 // "verified" only while the confirmation is current and still matches the details.
                 'status' => $this->hasValidKyc() ? KycStatus::Verified->value : ($this->kyc_status === KycStatus::Verified ? KycStatus::Expired->value : $this->kyc_status->value),
-                'verified_at' => $this->kyc_verified_at?->toIso8601String(),
-                'expires_at' => $this->kyc_expires_at?->toIso8601String(),
+                'verified_at' => $this->kyc_verified_at?->toApiString(),
+                'expires_at' => $this->kyc_expires_at?->toApiString(),
             ],
             'group' => $this->whenLoaded('currentGroupMembership', fn () => $this->currentGroupMembership ? [
                 'public_id' => $this->currentGroupMembership->group->public_id,
@@ -77,9 +86,11 @@ class CustomerResource extends JsonResource
                 'name' => $this->recommendedBy->full_name,
             ] : null),
             'credit_score' => $this->credit_score,
+            // Additive (guide v2.1): custom fields defined by the business.
+            'meta' => $this->meta ?? (object) [],
             'is_active' => $this->is_active,
-            'created_at' => $this->created_at?->toIso8601String(),
-            'updated_at' => $this->updated_at?->toIso8601String(),
+            'created_at' => $this->created_at?->toApiString(),
+            'updated_at' => $this->updated_at?->toApiString(),
         ];
     }
 }

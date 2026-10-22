@@ -1,8 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests\Loans;
 
+use App\Enums\LookupType;
 use App\Http\Requests\Concerns\FormatsValidationErrors;
+use App\Support\Lookups\CustomFields;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -34,6 +38,7 @@ class UpdateLoanRequest extends FormRequest
             'members' => ['sometimes', 'array', 'min:1', 'max:100'],
             'members.*.customer_public_id' => ['required', 'string', 'ulid', 'distinct'],
             'members.*.amount' => ['required', 'decimal:0,2', 'gt:0', 'max:9999999999999'],
-        ];
+            // Custom loan fields defined as data (lookups custom_field.loan); meta is replaced as a whole.
+        ] + CustomFields::rules(LookupType::LoanField);
     }
 }

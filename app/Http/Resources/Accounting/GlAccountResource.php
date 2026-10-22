@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Accounting;
 
 use App\Models\GlAccount;
@@ -21,7 +23,7 @@ class GlAccountResource extends JsonResource
             'is_system' => $this->isSystem(),
             'description' => $this->description,
             'is_active' => $this->is_active,
-            'updated_at' => $this->updated_at?->toIso8601String(),
+            'updated_at' => $this->updated_at?->toApiString(),
         ];
     }
 }

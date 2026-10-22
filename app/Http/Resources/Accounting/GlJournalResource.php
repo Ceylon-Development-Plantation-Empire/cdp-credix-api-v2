@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Accounting;
 
 use App\Models\GlJournal;
@@ -27,7 +29,7 @@ class GlJournalResource extends JsonResource
             'transaction' => $this->whenLoaded('transaction', fn () => $this->transaction ? ['public_id' => $this->transaction->public_id, 'txn_no' => $this->transaction->txn_no] : null),
             'created_by' => $this->whenLoaded('creator', fn () => $this->creator ? ['name' => $this->creator->name] : null),
             'approved_by' => $this->whenLoaded('approver', fn () => $this->approver ? ['name' => $this->approver->name] : null),
-            'posted_at' => $this->posted_at?->toIso8601String(),
+            'posted_at' => $this->posted_at?->toApiString(),
             'lines' => $this->whenLoaded('lines', fn () => $this->lines->map(fn ($line) => [
                 'account' => ['id' => $line->account->id, 'code' => $line->account->code, 'name' => $line->account->name],
                 'debit' => (string) $line->debit,

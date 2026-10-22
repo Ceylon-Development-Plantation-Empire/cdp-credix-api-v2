@@ -1,10 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Customers\VerifyOtpRequest;
 use App\Http\Requests\Loans\AddGuarantorRequest;
+use App\Http\Requests\Loans\OptionalRemarksRequest;
 use App\Http\Resources\Loans\LoanPartyResource;
 use App\Http\Resources\Loans\LoanResource;
 use App\Models\Customer;
@@ -155,10 +158,10 @@ class LoanPartyController extends Controller implements HasMiddleware
         }
     }
 
-    public function declineOffer(Request $request, string $publicId)
+    public function declineOffer(OptionalRemarksRequest $request, string $publicId)
     {
         try {
-            $remarks = $request->validate(['remarks' => ['nullable', 'string', 'max:1000']])['remarks'] ?? null;
+            $remarks = $request->validated()['remarks'] ?? null;
             $loan = Loan::where('public_id', $publicId)->first();
 
             if (! $loan) {

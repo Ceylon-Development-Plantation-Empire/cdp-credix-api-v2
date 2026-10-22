@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
@@ -49,7 +51,7 @@ class CustomerKycController extends Controller implements HasMiddleware
                 'message' => 'Verification code sent to the customer',
                 'data' => [
                     'sent_to' => PhoneNormalizer::mask($challenge->destination),
-                    'expires_at' => $challenge->expires_at->toIso8601String(),
+                    'expires_at' => $challenge->expires_at->toApiString(),
                 ],
             ], 200);
         } catch (\Throwable $th) {
@@ -73,7 +75,7 @@ class CustomerKycController extends Controller implements HasMiddleware
                 'message' => 'Verification code sent again',
                 'data' => [
                     'sent_to' => PhoneNormalizer::mask($challenge->destination),
-                    'expires_at' => $challenge->expires_at->toIso8601String(),
+                    'expires_at' => $challenge->expires_at->toApiString(),
                 ],
             ], 200);
         } catch (\Throwable $th) {

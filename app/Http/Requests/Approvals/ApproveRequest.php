@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests\Approvals;
 
 use App\Http\Requests\Concerns\FormatsValidationErrors;

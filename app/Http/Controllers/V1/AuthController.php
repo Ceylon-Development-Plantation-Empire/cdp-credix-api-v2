@@ -1,198 +1,133 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\Employee;
+use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\VerifyLoginOtpRequest;
 use App\Models\User;
+use App\Services\Auth\AuthService;
+use App\Support\AuthCookie;
+use App\Support\PhoneNormalizer;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cookie;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Validator;
 
+/**
+ * Staff sign-in, sign-out and "who am I" (API guide section 3).
+ *
+ * The JWT is set as the HttpOnly cookie "auth_token" and never returned in the body. Business
+ * failures (wrong credentials, locked or disabled account, no role) are BusinessRuleExceptions
+ * rendered as {status: "error", code, message}; the logic lives in AuthService.
+ */
 class AuthController extends Controller
 {
+    public function __construct(
+        protected AuthService $auth,
+    ) {}
+
     /**
-     * Admin Login
-     * Only users with user_type = 'admin' can login here
+     * POST /login {login: email, password}.
+     *
+     * 200 with the user and the session cookie; with SMS 2FA switched on (setting
+     * security.staff_login_otp) 202 {otp_required, challenge_id, sent_to} instead, and the cookie is
+     * set by POST /login/verify-otp.
      */
-    public function login(Request $request)
+    public function login(LoginRequest $request): JsonResponse
     {
-        try {
-            $validator = Validator::make($request->all(), [
-                'login' => 'required|string',
-                'password' => 'required|string',
-            ]);
+        $result = $this->auth->attempt($request->validated('login'), $request->validated('password'), $request->ip());
 
-            if ($validator->fails()) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Validation failed',
-                    'errors' => $validator->errors(),
-                ], 422);
-            }
-
-            $loginVal = $request->input('login');
-            $passwordVal = $request->input('password');
-
-            // Find user by username or email
-            $user = User::where('username', $loginVal)
-                ->orWhere('email', $loginVal)
-                ->first();
-
-            // Fallback: search employee by id_number
-            if (! $user) {
-                $employee = Employee::where('id_number', $loginVal)->first();
-                if ($employee) {
-                    $user = User::where('employee_id', $employee->id)->first();
-                }
-            }
-
-            if (! $user || ! Hash::check($passwordVal, $user->password)) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Invalid credentials',
-                ], 401);
-            }
-
-            /** @var \PHPOpenSourceSaver\JWTAuth\JWTGuard $guard */
-            $guard = Auth::guard('api');
-            $token = $guard->login($user);
-            /** @var \App\Models\User $user */
-            $user = auth('api')->user();
-
-            if (! $user->canLogin()) {
-                Auth::guard('api')->logout();
-
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Account is deactivated',
-                ], 401);
-            }
-
-            if (! $user->roles()->exists()) {
-                Auth::guard('api')->logout();
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No admin role assigned. Please contact Super Admin.',
-                ], 403);
-            }
-
-            $user->updateLastLogin($request->ip());
-
-            $cookie = cookie(
-                'auth_token',
-                $token,
-                60 * 24 * 7,
-                '/',
-                null,
-                true,  // Secure
-                true,  // HttpOnly
-                false,
-                'lax'
-            );
-
-            $user->load(['roles' => function ($query) {
-                $query->select('id', 'name')
-                    ->with(['permissions' => function ($query) {
-                        $query->select('id', 'name');
-                    }]);
-            }]);
-
-            if ($user->relationLoaded('roles')) {
-                $user->roles->each->makeHidden(['pivot']);
-                $user->roles->each(function ($role) {
-                    if ($role->relationLoaded('permissions')) {
-                        $role->permissions->each->makeHidden(['pivot']);
-                    }
-                });
-            }
-
+        if (isset($result['challenge'])) {
             return response()->json([
                 'status' => 'success',
-                'message' => 'Login successful',
+                'message' => 'Enter the code sent to your mobile',
                 'data' => [
-                    'user' => $user,
-                    'token_type' => 'bearer',
-                    'expires_in' => config('jwt.ttl') * 60,
+                    'otp_required' => true,
+                    'challenge_id' => $result['challenge']->public_id,
+                    'sent_to' => PhoneNormalizer::mask($result['challenge']->destination),
+                    'expires_in' => (int) now()->diffInSeconds($result['challenge']->expires_at),
                 ],
-            ], 200)->cookie($cookie);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to login',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
+            ], 202);
         }
+
+        return $this->signedIn($result['user'], $result['token'], $request, 'Login successful');
     }
 
     /**
-     * Admin Logout
+     * POST /login/verify-otp {challenge_id, code}: second sign-in step when 2FA is on.
      */
-    public function logout(Request $request)
+    public function verifyOtp(VerifyLoginOtpRequest $request): JsonResponse
     {
-        try {
-            // Logout the user (invalidates the token)
-            Auth::guard('api')->logout();
+        $result = $this->auth->verifyOtp($request->validated('challenge_id'), $request->validated('code'), $request->ip());
 
-            // Create an expired cookie to remove it from browser
-            $cookie = Cookie::forget('auth_token');
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Logout successful',
-            ], 200)->withCookie($cookie);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to logout',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
-        }
+        return $this->signedIn($result['user'], $result['token'], $request, 'Login successful');
     }
 
     /**
-     * Get authenticated admin user
+     * POST /logout: end this session and remove the cookie.
      */
-    public function me()
+    public function logout(): JsonResponse
     {
-        try {
-            /** @var \App\Models\User $user */
-            $user = auth('api')->user();
+        $this->auth->logout();
 
-            $user->load(['roles' => function ($query) {
-                $query->select('id', 'name')
-                    ->with(['permissions' => function ($query) {
-                        $query->select('id', 'name');
-                    }]);
-            }]);
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Logout successful',
+        ], 200)->withCookie(AuthCookie::forget());
+    }
 
-            if ($user->relationLoaded('roles')) {
-                $user->roles->each->makeHidden(['pivot']);
-                $user->roles->each(function ($role) {
-                    if ($role->relationLoaded('permissions')) {
-                        $role->permissions->each->makeHidden(['pivot']);
-                    }
-                });
-            }
+    /**
+     * GET /me: the signed-in user with roles and permissions, and their branch.
+     */
+    public function me(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user('api');
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'User details fetched successfully',
-                'data' => [
-                    'user' => $user,
-                    // The branch of the user's employee record: the default branch for new records.
-                    'branch' => $user->employee?->branch?->only(['id', 'name', 'code']),
-                ],
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to fetch user details',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
-        }
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User details fetched successfully',
+            'data' => [
+                'user' => $this->withRolesAndPermissions($user),
+                // The branch of the user's employee record: the default branch for new records.
+                'branch' => $user->employee?->branch?->only(['id', 'name', 'code']),
+                // Additive (guide v2.1): true when an administrator set the password.
+                'must_change_password' => $user->must_change_password,
+            ],
+        ], 200);
+    }
+
+    /**
+     * The documented sign-in response: user + token type + lifetime, token in the cookie only.
+     */
+    protected function signedIn(User $user, string $token, Request $request, string $message): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'message' => $message,
+            'data' => [
+                'user' => $this->withRolesAndPermissions($user),
+                'token_type' => 'bearer',
+                'expires_in' => (int) config('jwt.ttl') * 60,
+                'must_change_password' => $user->must_change_password,
+            ],
+        ], 200)->cookie(AuthCookie::make($token, $request));
+    }
+
+    /**
+     * The user with roles (id, name) and each role's permissions (id, name), pivots hidden.
+     */
+    protected function withRolesAndPermissions(User $user): User
+    {
+        $user->load(['roles' => fn ($query) => $query->select('id', 'name')
+            ->with(['permissions' => fn ($q) => $q->select('id', 'name')])]);
+
+        $user->roles->each(function ($role) {
+            $role->makeHidden(['pivot']);
+            $role->permissions->each->makeHidden(['pivot']);
+        });
+
+        return $user;
     }
 }

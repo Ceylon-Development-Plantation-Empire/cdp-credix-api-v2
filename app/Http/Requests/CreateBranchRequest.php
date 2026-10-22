@@ -1,7 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests;
 
+use App\Enums\LookupType;
+use App\Rules\LookupCode;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -31,7 +35,7 @@ class CreateBranchRequest extends FormRequest
             'email' => 'nullable|email|max:255',
             'fax' => 'nullable|string|max:20',
             'opening_date' => 'required|date',
-            'branch_type' => 'required|in:main,city,satellite,mobile',
+            'branch_type' => ['required', 'string', new LookupCode(LookupType::BranchType)],
             'latitude' => 'nullable|numeric|between:-90,90',
             'longitude' => 'nullable|numeric|between:-180,180',
             'is_active' => 'sometimes|boolean',

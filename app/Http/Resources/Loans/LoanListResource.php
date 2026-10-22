@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Loans;
 
 use App\Models\Loan;
@@ -24,7 +26,7 @@ class LoanListResource extends JsonResource
             'customer' => $this->whenLoaded('customer', fn () => $this->customer ? [
                 'public_id' => $this->customer->public_id,
                 'full_name' => $this->customer->full_name,
-                'id_number' => Mask::idNumber($this->customer->id_number_normalized),
+                'id_number' => Mask::idNumber($this->customer->normalizedIdNumber()),
             ] : null),
             'borrower_group' => $this->whenLoaded('borrowerGroup', fn () => $this->borrowerGroup ? [
                 'public_id' => $this->borrowerGroup->public_id,
@@ -36,7 +38,7 @@ class LoanListResource extends JsonResource
             'amount' => $this->decisionAmount(),
             'status' => $this->status->value,
             'days_past_due' => $this->days_past_due,
-            'created_at' => $this->created_at?->toIso8601String(),
+            'created_at' => $this->created_at?->toApiString(),
         ];
     }
 }

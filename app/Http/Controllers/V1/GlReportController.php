@@ -1,15 +1,21 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Accounting\AccountStatementRequest;
+use App\Http\Requests\Accounting\ClosePeriodRequest;
+use App\Http\Requests\Accounting\ReconciliationRequest;
+use App\Http\Requests\Accounting\TrialBalanceRequest;
 use App\Models\GlAccount;
 use App\Services\Accounting\GeneralLedgerService;
 use App\Services\Accounting\GlReportService;
+use App\Support\BusinessDate;
 use App\Traits\HandlesApiErrors;
 use App\Traits\PaginatesResources;
 use Carbon\CarbonImmutable;
-use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
@@ -33,21 +39,17 @@ class GlReportController extends Controller implements HasMiddleware
         ];
     }
 
-    public function trialBalance(Request $request)
+    public function trialBalance(TrialBalanceRequest $request)
     {
         try {
-            $filters = $request->validate([
-                'as_of' => ['nullable', 'date_format:Y-m-d'],
-                'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
-                'include_zero' => ['sometimes', 'boolean'],
-            ]);
+            $filters = $request->validated();
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Trial balance generated',
                 'data' => $this->reports->trialBalance(
-                    CarbonImmutable::parse($filters['as_of'] ?? today()->toDateString()),
-                    $filters['branch_id'] ?? null,
+                    CarbonImmutable::parse($filters['as_of'] ?? BusinessDate::today()->toDateString()),
+                    $request->filled('branch_id') ? $request->integer('branch_id') : null,
                     $request->boolean('include_zero'),
                 ),
             ], 200);
@@ -56,7 +58,7 @@ class GlReportController extends Controller implements HasMiddleware
         }
     }
 
-    public function statement(Request $request, int $id)
+    public function statement(AccountStatementRequest $request, int $id)
     {
         try {
             $account = GlAccount::find($id);
@@ -65,14 +67,10 @@ class GlReportController extends Controller implements HasMiddleware
                 return $this->notFound('GL account not found');
             }
 
-            $filters = $request->validate([
-                'from' => ['nullable', 'date_format:Y-m-d'],
-                'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
-                'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
-            ]);
+            $filters = $request->validated();
 
-            $from = CarbonImmutable::parse($filters['from'] ?? today()->startOfMonth()->toDateString());
-            $to = CarbonImmutable::parse($filters['to'] ?? today()->toDateString());
+            $from = CarbonImmutable::parse($filters['from'] ?? BusinessDate::today()->startOfMonth()->toDateString());
+            $to = CarbonImmutable::parse($filters['to'] ?? BusinessDate::today()->toDateString());
 
             if ($from->greaterThan($to) || $from->diffInDays($to) > 366) {
                 return response()->json(['status' => 'error', 'code' => 'REPORT_PERIOD_TOO_LONG', 'message' => 'A statement covers one period of at most one year.'], 422);
@@ -81,22 +79,22 @@ class GlReportController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Account statement generated',
-                'data' => $this->reports->statement($account, $from, $to, $filters['branch_id'] ?? null, $this->perPage($request)),
+                'data' => $this->reports->statement($account, $from, $to, $request->filled('branch_id') ? $request->integer('branch_id') : null, $this->perPage($request)),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to generate account statement', $th);
         }
     }
 
-    public function reconciliation(Request $request)
+    public function reconciliation(ReconciliationRequest $request)
     {
         try {
-            $filters = $request->validate(['branch_id' => ['nullable', 'integer', 'exists:branches,id']]);
+            $filters = $request->validated();
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Reconciliation generated',
-                'data' => $this->reports->reconciliation($filters['branch_id'] ?? null),
+                'data' => $this->reports->reconciliation($request->filled('branch_id') ? $request->integer('branch_id') : null),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to generate reconciliation', $th);
@@ -116,10 +114,10 @@ class GlReportController extends Controller implements HasMiddleware
         }
     }
 
-    public function closePeriod(Request $request)
+    public function closePeriod(ClosePeriodRequest $request)
     {
         try {
-            $data = $request->validate(['through' => ['required', 'date_format:Y-m-d']]);
+            $data = $request->validated();
             $through = $this->gl->closePeriod(CarbonImmutable::parse($data['through']), $request->user());
 
             return response()->json([

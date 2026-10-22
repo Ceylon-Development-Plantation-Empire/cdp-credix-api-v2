@@ -1,12 +1,19 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
+use App\Exceptions\BusinessRuleException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Reports\DashboardTrendRequest;
+use App\Http\Requests\Reports\PeriodReportRequest;
+use App\Http\Requests\Reports\SnapshotReportRequest;
 use App\Services\Reports\ReportService;
+use App\Support\BusinessDate;
 use App\Traits\HandlesApiErrors;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
@@ -18,10 +25,18 @@ class ReportController extends Controller implements HasMiddleware
 {
     use HandlesApiErrors;
 
+    /**
+     * Longest period one report may cover (days).
+     */
+    private const MAX_PERIOD_DAYS = 366;
+
     public function __construct(
         protected ReportService $reports,
     ) {}
 
+    /**
+     * @return list<Middleware>
+     */
     public static function middleware(): array
     {
         return [
@@ -30,76 +45,105 @@ class ReportController extends Controller implements HasMiddleware
         ];
     }
 
-    public function overview(Request $request)
+    /**
+     * GET /dashboard/overview.
+     */
+    public function overview(SnapshotReportRequest $request): JsonResponse
     {
-        return $this->run('Dashboard', fn (array $f) => $this->reports->overview($f), $request, period: false);
+        return $this->respond('Dashboard', fn () => $this->reports->overview($request->validated()));
     }
 
     /**
-     * Paid out and collected per month for the dashboard chart (?months=1..12, default 6).
+     * GET /dashboard/trend: paid out and collected per month for the dashboard chart.
      */
-    public function trend(Request $request)
+    public function trend(DashboardTrendRequest $request): JsonResponse
     {
-        $months = $request->validate(['months' => ['nullable', 'integer', 'min:1', 'max:12']])['months'] ?? 6;
+        $filters = $request->safe()->except('months');
+        $months = (int) ($request->validated('months') ?? 6);
 
-        return $this->run('Dashboard trend', fn (array $f) => $this->reports->monthlyTrend((int) $months, $f), $request, period: false);
-    }
-
-    public function portfolio(Request $request)
-    {
-        return $this->run('Portfolio report', fn (array $f) => $this->reports->portfolio($f), $request, period: false);
-    }
-
-    public function arrearsAging(Request $request)
-    {
-        return $this->run('Arrears aging report', fn (array $f) => $this->reports->arrearsAging($f), $request, period: false);
-    }
-
-    public function collections(Request $request)
-    {
-        return $this->run('Collections report', fn (array $f) => $this->reports->collections($f), $request, period: true);
-    }
-
-    public function disbursements(Request $request)
-    {
-        return $this->run('Disbursements report', fn (array $f) => $this->reports->disbursements($f), $request, period: true);
-    }
-
-    public function branchPerformance(Request $request)
-    {
-        return $this->run('Branch performance report', fn (array $f) => $this->reports->branchPerformance($f), $request, period: true);
-    }
-
-    public function recovery(Request $request)
-    {
-        return $this->run('Recovery report', fn (array $f) => $this->reports->recovery($f), $request, period: false);
+        return $this->respond('Dashboard trend', fn () => $this->reports->monthlyTrend($months, $filters));
     }
 
     /**
-     * Shared filters: branch_id always; from/to (max one year) for period reports, this month by default.
+     * GET /reports/portfolio.
      */
-    protected function run(string $name, callable $report, Request $request, bool $period): JsonResponse
+    public function portfolio(SnapshotReportRequest $request): JsonResponse
+    {
+        return $this->respond('Portfolio report', fn () => $this->reports->portfolio($request->validated()));
+    }
+
+    /**
+     * GET /reports/arrears-aging.
+     */
+    public function arrearsAging(SnapshotReportRequest $request): JsonResponse
+    {
+        return $this->respond('Arrears aging report', fn () => $this->reports->arrearsAging($request->validated()));
+    }
+
+    /**
+     * GET /reports/collections.
+     */
+    public function collections(PeriodReportRequest $request): JsonResponse
+    {
+        return $this->respond('Collections report', fn () => $this->reports->collections($this->period($request)));
+    }
+
+    /**
+     * GET /reports/disbursements.
+     */
+    public function disbursements(PeriodReportRequest $request): JsonResponse
+    {
+        return $this->respond('Disbursements report', fn () => $this->reports->disbursements($this->period($request)));
+    }
+
+    /**
+     * GET /reports/branch-performance.
+     */
+    public function branchPerformance(PeriodReportRequest $request): JsonResponse
+    {
+        return $this->respond('Branch performance report', fn () => $this->reports->branchPerformance($this->period($request)));
+    }
+
+    /**
+     * GET /reports/recovery.
+     */
+    public function recovery(SnapshotReportRequest $request): JsonResponse
+    {
+        return $this->respond('Recovery report', fn () => $this->reports->recovery($request->validated()));
+    }
+
+    /**
+     * Period filters with this month as the default, never longer than a year.
+     *
+     * @return array{branch_id?: int|null, from: string, to: string}
+     *
+     * @throws BusinessRuleException REPORT_PERIOD_TOO_LONG
+     */
+    protected function period(PeriodReportRequest $request): array
+    {
+        $filters = $request->validated();
+        $filters['from'] ??= BusinessDate::today()->startOfMonth()->toDateString();
+        $filters['to'] ??= BusinessDate::today()->toDateString();
+
+        if (CarbonImmutable::parse($filters['from'])->diffInDays(CarbonImmutable::parse($filters['to'])) > self::MAX_PERIOD_DAYS) {
+            throw new BusinessRuleException('REPORT_PERIOD_TOO_LONG', 'A report covers at most one year.', 422);
+        }
+
+        return $filters;
+    }
+
+    /**
+     * The documented success envelope around a report.
+     *
+     * @param  callable(): mixed  $report
+     */
+    protected function respond(string $name, callable $report): JsonResponse
     {
         try {
-            $filters = $request->validate([
-                'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
-                'from' => [$period ? 'nullable' : 'prohibited', 'date_format:Y-m-d'],
-                'to' => [$period ? 'nullable' : 'prohibited', 'date_format:Y-m-d', 'after_or_equal:from', 'before_or_equal:today'],
-            ]);
-
-            if ($period) {
-                $filters['from'] ??= today()->startOfMonth()->toDateString();
-                $filters['to'] ??= today()->toDateString();
-
-                if (now()->parse($filters['from'])->diffInDays(now()->parse($filters['to'])) > 366) {
-                    return response()->json(['status' => 'error', 'code' => 'REPORT_PERIOD_TOO_LONG', 'message' => 'A report covers at most one year.'], 422);
-                }
-            }
-
             return response()->json([
                 'status' => 'success',
                 'message' => "{$name} generated",
-                'data' => $report($filters),
+                'data' => $report(),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError("Failed to generate {$name}", $th);

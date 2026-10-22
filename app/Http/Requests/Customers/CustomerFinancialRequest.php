@@ -1,9 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests\Customers;
 
 use App\Enums\FinancialKind;
+use App\Enums\LookupType;
 use App\Http\Requests\Concerns\FormatsValidationErrors;
+use App\Support\Lookups\LookupRegistry;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -25,8 +29,8 @@ class CustomerFinancialRequest extends FormRequest
 
         return [
             'kind' => ['required', Rule::enum(FinancialKind::class)],
-            // Categories depend on the kind (salary is an income, not an asset).
-            'category' => ['required', 'string', Rule::in($kind?->categories() ?? [])],
+            // Categories depend on the kind (salary is an income, not an asset); the lists are lookup data.
+            'category' => ['required', 'string', Rule::in($kind ? app(LookupRegistry::class)->selectableCodes(LookupType::forFinancialKind($kind)) : [])],
             'description' => ['nullable', 'string', 'max:255'],
             'institution_name' => ['nullable', 'required_if:kind,liability', 'string', 'max:150'],
             'reference_no' => ['nullable', 'string', 'max:60'],

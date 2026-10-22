@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
@@ -8,6 +10,7 @@ use App\Models\Employee;
 use App\Models\EmployeeHierarchyHistory;
 use App\Models\User;
 use App\Notifications\ManagerReassignedNotification;
+use App\Support\BusinessDate;
 use App\Traits\ActivityLogTrait;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -213,7 +216,7 @@ class EmployeeHierarchyController extends Controller implements HasMiddleware
                 ], 404);
             }
 
-            $asOfDate = $request->query('as_of_date', now()->format('Y-m-d'));
+            $asOfDate = $request->query('as_of_date', BusinessDate::today()->toDateString());
 
             $manager = $employee->resolveReportingManagerAsOf($asOfDate);
             if ($manager) {

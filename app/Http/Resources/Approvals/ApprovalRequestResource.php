@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Resources\Approvals;
 
 use App\Models\ApprovalRequest;
@@ -24,9 +26,9 @@ class ApprovalRequestResource extends JsonResource
             'reason' => $this->reason,
             'status' => $this->status->value,
             'requested_by' => $this->whenLoaded('requester', fn () => ['name' => $this->requester->name]),
-            'requested_at' => $this->created_at?->toIso8601String(),
+            'requested_at' => $this->created_at?->toApiString(),
             'decided_by' => $this->whenLoaded('decider', fn () => $this->decider ? ['name' => $this->decider->name] : null),
-            'decided_at' => $this->decided_at?->toIso8601String(),
+            'decided_at' => $this->decided_at?->toApiString(),
             'decision_reference' => $this->decision_reference,
             'decision_remarks' => $this->decision_remarks,
             // The proposed change is shown on the detail screen only; the list stays light.
