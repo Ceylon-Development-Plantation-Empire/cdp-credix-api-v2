@@ -23,7 +23,6 @@ class ReferenceDataSeeder extends Seeder
         $this->call([
             LookupSeeder::class,
             ChargeTypeSeeder::class,
-            LendingMarginPlanSeeder::class,
             ChartOfAccountsSeeder::class,
         ]);
     }

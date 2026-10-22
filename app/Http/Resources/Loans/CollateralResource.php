@@ -20,11 +20,6 @@ class CollateralResource extends JsonResource
             'public_id' => $this->public_id,
             'type' => $this->type,
             'type_label' => app(CollateralTypes::class)->label($this->type),
-            // Additive (v2.1): the plan the item was valued under; null = the product's lending %.
-            'lending_margin_plan' => $this->whenLoaded('lendingMarginPlan', fn () => $this->lendingMarginPlan ? [
-                'code' => $this->lendingMarginPlan->code,
-                'name' => $this->lendingMarginPlan->name,
-            ] : null),
             'description' => $this->description,
             'details' => $this->details,
             'owner' => $this->whenLoaded('owner', fn () => $this->owner ? [

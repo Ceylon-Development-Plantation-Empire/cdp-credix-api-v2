@@ -55,7 +55,7 @@ class LoanCollateralController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Collaterals retrieved successfully',
-                'data' => CollateralResource::collection($loan->collaterals()->with(['owner', 'lendingMarginPlan'])->get()),
+                'data' => CollateralResource::collection($loan->collaterals()->with(['owner'])->get()),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve collaterals', $th);
@@ -76,7 +76,7 @@ class LoanCollateralController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Collateral added successfully',
-                'data' => new CollateralResource($collateral->load(['owner', 'lendingMarginPlan'])),
+                'data' => new CollateralResource($collateral->load(['owner'])),
             ], 201);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to add collateral', $th);
@@ -95,7 +95,7 @@ class LoanCollateralController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Collateral verified',
-                'data' => new CollateralResource($this->collaterals->verify($collateral, $request->user())->load(['owner', 'lendingMarginPlan'])),
+                'data' => new CollateralResource($this->collaterals->verify($collateral, $request->user())->load(['owner'])),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to verify collateral', $th);
@@ -114,7 +114,7 @@ class LoanCollateralController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Collateral perfected',
-                'data' => new CollateralResource($this->collaterals->perfect($collateral, $request->validated(), $request->user())->load(['owner', 'lendingMarginPlan'])),
+                'data' => new CollateralResource($this->collaterals->perfect($collateral, $request->validated(), $request->user())->load(['owner'])),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to perfect collateral', $th);

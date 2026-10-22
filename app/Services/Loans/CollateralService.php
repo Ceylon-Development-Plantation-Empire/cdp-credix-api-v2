@@ -14,12 +14,10 @@ use App\Finance\Collateral\GoldValuation;
 use App\Finance\Support\Money;
 use App\Models\Collateral;
 use App\Models\Customer;
-use App\Models\LendingMarginPlan;
 use App\Models\Loan;
 use App\Models\LoanParty;
 use App\Models\User;
 use App\Support\Collateral\CollateralTypes;
-use Brick\Math\BigDecimal;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
@@ -27,8 +25,8 @@ use Illuminate\Support\Facades\DB;
  * Collateral on a loan: valuation and LTV, verification by a second person, perfection
  * (the security legally in place) before disbursement.
  *
- * eligible amount = value × lending %: the chosen lending-margin plan's %, else the product's
- *                   rule for that collateral type (the plan is optional)
+ * eligible amount = value × the product's lending % for the type when the product has one (shown for
+ *                   information; nothing is refused because of it), else the full value
  * gold value      = net weight × karat / 24 × 24K rate per gram (never typed in by hand)
  */
 class CollateralService
@@ -58,14 +56,9 @@ class CollateralService
             $label = $this->types->label($type);
             $rule = collect($this->pricing->termsOf($loan)['collateral_rules'])->firstWhere('collateral_type', $type);
 
-            if (! $rule) {
-                throw new BusinessRuleException('COLLATERAL_TYPE_NOT_ALLOWED', "{$label} is not accepted as security for this product.", 422);
-            }
-
-            $plan = $this->plan($data['lending_margin_plan'] ?? null, $type, $label);
-            // DECISION: a chosen plan decides the lending % (that is what the plan is for); without
-            // one the product's rule applies. Either way the % is copied onto the item.
-            $percent = $plan ? (string) $plan->percentage : (string) $rule['max_ltv_percent'];
+            // Security is recorded as data: no lending limit is applied and no kind of security is refused.
+            // The product's % (when it has one for this type) is only copied on for information.
+            $percent = $rule ? (string) $rule['max_ltv_percent'] : '100.00';
 
             $ownerId = null;
 
@@ -99,13 +92,11 @@ class CollateralService
             ]);
 
             $collateral->forceFill([
-                'lending_margin_plan_id' => $plan?->id,
                 'ltv_percent' => $percent,
                 'eligible_amount' => (string) $this->gold->eligibleAmount($value, $percent),
             ])->save();
 
-            $planNote = $plan ? ", plan {$plan->name} at {$percent}%" : ", {$percent}% of value";
-            $this->workflow->record($loan, LoanActivityType::Update, $by, "Collateral added: {$label} ({$collateral->public_id}){$planNote}");
+            $this->workflow->record($loan, LoanActivityType::Update, $by, "Collateral added: {$label} ({$collateral->public_id}), value {$value}");
 
             return $collateral;
         });
@@ -203,16 +194,6 @@ class CollateralService
     }
 
     /**
-     * Sum of what the verified (or perfected) collateral can secure.
-     */
-    public function coverage(Loan $loan): BigDecimal
-    {
-        return Money::sum($loan->collaterals()
-            ->whereIn('status', [CollateralStatus::Verified->value, CollateralStatus::Perfected->value])
-            ->pluck('eligible_amount'));
-    }
-
-    /**
      * @return list<string> slugs of document types still missing
      */
     public function missingDocuments(Collateral $collateral): array
@@ -221,28 +202,6 @@ class CollateralService
             ->with('documentType')->get()->pluck('documentType.slug')->unique();
 
         return array_values(array_diff($this->types->documents($collateral->type), $verified->all()));
-    }
-
-    /**
-     * The chosen lending-margin plan, if any: active, and of the same collateral type.
-     */
-    protected function plan(?string $code, string $type, string $label): ?LendingMarginPlan
-    {
-        if (blank($code)) {
-            return null;
-        }
-
-        $plan = LendingMarginPlan::where('code', $code)->first();
-
-        if (! $plan || ! $plan->is_active) {
-            throw new BusinessRuleException('LENDING_MARGIN_PLAN_NOT_AVAILABLE', 'This lending-margin plan does not exist or is no longer active.', 422);
-        }
-
-        if ($plan->collateral_type !== $type) {
-            throw new BusinessRuleException('LENDING_MARGIN_PLAN_TYPE_MISMATCH', "{$plan->name} is a plan for another kind of security, not {$label}.", 422);
-        }
-
-        return $plan;
     }
 
     protected function assertChangeWindow(Loan $loan): void

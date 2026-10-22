@@ -15,8 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 /**
- * One pledged item. type is the code of a collateral_type lookup (stored as collateral_type_id);
- * lending_margin_plan_id is the optional plan it was valued under.
+ * One pledged item, recorded as data. type is the code of a collateral_type lookup (stored as collateral_type_id).
  *
  * @property string $type
  */
@@ -88,11 +87,6 @@ class Collateral extends Model
     public function loan(): BelongsTo
     {
         return $this->belongsTo(Loan::class);
-    }
-
-    public function lendingMarginPlan(): BelongsTo
-    {
-        return $this->belongsTo(LendingMarginPlan::class);
     }
 
     public function owner(): BelongsTo

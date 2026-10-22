@@ -17,9 +17,6 @@ use Illuminate\Foundation\Http\FormRequest;
  * that type's fields (deed number for property, chassis number for a vehicle, karat and weight
  * for gold …), see App\Support\Collateral\CollateralTypes.
  *
- * lending_margin_plan is optional: the code of a plan of the same collateral type. Without one,
- * the product's lending % for the type is used.
- *
  * Gold is valued from its weight, purity and the 24K rate, so market_value is not taken for gold.
  */
 class CollateralRequest extends FormRequest
@@ -40,7 +37,6 @@ class CollateralRequest extends FormRequest
 
         $rules = [
             'type' => ['required', 'string', new LookupCode(LookupType::CollateralType)],
-            'lending_margin_plan' => ['nullable', 'string', 'max:40'],
             'owner_customer_public_id' => ['nullable', 'string', 'ulid'],
             'description' => ['required', 'string', 'max:255'],
             // A type with no fields of its own asks for no details.
