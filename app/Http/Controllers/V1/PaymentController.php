@@ -44,7 +44,7 @@ class PaymentController extends Controller implements HasMiddleware
     public function index(Request $request)
     {
         try {
-            $query = LoanTransaction::with(['loan', 'payer', 'reversal'])
+            $query = LoanTransaction::with(['loan.customer', 'payer', 'reversal', 'allocations.installment'])
                 ->whereHas('loan')
                 ->whereIn('type', [TransactionType::Repayment->value, TransactionType::EarlySettlement->value, TransactionType::Reversal->value])
                 ->latest('id');
