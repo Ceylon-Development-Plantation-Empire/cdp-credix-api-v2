@@ -1,17 +1,20 @@
 <?php
 
+declare(strict_types=1);
+
+use App\Exceptions\ApiExceptionRenderer;
+use App\Http\Middleware\EnsurePasswordChanged;
+use App\Http\Middleware\EnsureTokenIsCurrent;
 use App\Http\Middleware\EnsureUserType;
 use App\Http\Middleware\ForceHttps;
 use App\Http\Middleware\SanitizeInput;
 use App\Http\Middleware\SecurityHeaders;
-use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\ThrottleRequests;
-use Illuminate\Validation\ValidationException;
+use PHPOpenSourceSaver\JWTAuth\Http\Middleware\Authenticate;
+use PHPOpenSourceSaver\JWTAuth\Http\Middleware\RefreshToken;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
 
@@ -23,51 +26,32 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Every API request: HTTPS in production, HTML stripped from text input (secrets excepted),
+        // security headers, and the per-user / per-address limit (named limiter "api").
         $middleware->api(append: [
             ForceHttps::class,
             SanitizeInput::class,
             SecurityHeaders::class,
-            ThrottleRequests::class.':60,1',
+            ThrottleRequests::class.':api',
         ]);
 
         $middleware->alias([
-            'auth' => \PHPOpenSourceSaver\JWTAuth\Http\Middleware\Authenticate::class,
-            'jwt.auth' => \PHPOpenSourceSaver\JWTAuth\Http\Middleware\Authenticate::class,
-            'jwt.refresh' => \PHPOpenSourceSaver\JWTAuth\Http\Middleware\RefreshToken::class,
+            // The starter's "auth" is the JWT guard middleware (token from the auth_token cookie or header).
+            'auth' => Authenticate::class,
+            'jwt.auth' => Authenticate::class,
+            'jwt.refresh' => RefreshToken::class,
             'permission' => PermissionMiddleware::class,
             'role' => RoleMiddleware::class,
             'sanitize.input' => SanitizeInput::class,
             'security.headers' => SecurityHeaders::class,
             'user.type' => EnsureUserType::class,
+            // SECURITY: refuse tokens issued before a password change / deactivation (token_version).
+            'token.current' => EnsureTokenIsCurrent::class,
+            // Only while setting security.force_password_change is on (default off).
+            'password.changed' => EnsurePasswordChanged::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-
-        // Handle JWT / Auth exceptions (unauthenticated)
-        $exceptions->render(function (AuthenticationException $e, $request) {
-            if ($request->is('api/*')) {
-                return response()->json([
-                    'message' => 'Unauthenticated.',
-                    'error' => 'Token not provided or invalid',
-                ], 401);
-            }
-        });
-
-        // Convert validation errors to JSON for APIs
-        $exceptions->render(function (ValidationException $e) {
-            return new JsonResponse([
-                'message' => 'Validation failed',
-                'errors' => $e->errors(),
-            ], 422);
-        });
-
-        // Catch-all exception format for API
-        $exceptions->render(function (\PHPOpenSourceSaver\JWTAuth\Exceptions\JWTException $e, Request $request) {
-            if ($request->is('api/*')) {
-                return response()->json([
-                    'message' => 'Token error',
-                    'error' => $e->getMessage(),
-                ], 401);
-            }
-        });
+        // One error envelope for the whole API ({status: "error", code, message, …}).
+        ApiExceptionRenderer::register($exceptions);
     })->create();

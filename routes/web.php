@@ -1,32 +1,12 @@
 <?php
 
-use Illuminate\Support\Facades\DB;
+declare(strict_types=1);
+
+use App\Http\Controllers\HealthController;
 use Illuminate\Support\Facades\Route;
 
 // Landing page
-Route::get('/', function () {
-    return view('landing');
-});
+Route::get('/', [HealthController::class, 'landing'])->name('landing');
 
-// Comprehensive health check
-Route::get('/health', function () {
-    $currentDateTime = now();
-    $status = [
-        'status' => 'healthy',
-        'date' => $currentDateTime->toDateString(),
-        'time' => $currentDateTime->toTimeString(),
-        'service' => 'CDP Starter Kit API',
-        'components' => [],
-    ];
-
-    // Check database
-    try {
-        DB::select('SELECT 1');
-        $status['components']['database'] = 'healthy';
-    } catch (\Exception $e) {
-        $status['components']['database'] = 'unhealthy';
-        $status['status'] = 'degraded';
-    }
-
-    return response()->json($status);
-});
+// Readiness check including the database
+Route::get('/health', [HealthController::class, 'health'])->name('health');

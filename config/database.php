@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Support\Str;
 
 return [
@@ -17,6 +19,12 @@ return [
     */
 
     'default' => env('DB_CONNECTION', 'sqlite'),
+
+    /*
+    | Full path to mysqldump for the database export (App\Services\DatabaseService), when it is not
+    | on the system PATH. Read through config so it still works after `php artisan config:cache`.
+    */
+    'mysqldump_path' => env('MYSQL_DUMP_PATH'),
 
     /*
     |--------------------------------------------------------------------------
@@ -57,7 +65,12 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
-            'engine' => null,
+            // DECISION: every table is InnoDB (row locks, foreign keys and transactions are required
+            // by the ledger); never left to the server default.
+            'engine' => 'InnoDB',
+            // The session works in UTC like the application, so TIMESTAMP columns hold true UTC
+            // whatever the server's own timezone is.
+            'timezone' => '+00:00',
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],

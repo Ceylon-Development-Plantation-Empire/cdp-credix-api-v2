@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 return [
 
     /*
@@ -67,7 +69,12 @@ return [
     |
     */
 
-    'timezone' => env('APP_TIMEZONE', 'UTC'),
+    // DECISION: the application clock and every stored moment are UTC (finance standard: no DST or
+    // offset ambiguity in the ledger). APP_TIMEZONE is the BUSINESS timezone below: Sri Lankan
+    // calendar dates and the +05:30 times shown by the API (App\Support\BusinessDate).
+    'timezone' => 'UTC',
+
+    'business_timezone' => env('APP_TIMEZONE', 'Asia/Colombo'),
 
     /*
     |--------------------------------------------------------------------------

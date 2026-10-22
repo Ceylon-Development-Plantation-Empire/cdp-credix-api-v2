@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 return [
 
     /*
@@ -41,6 +43,13 @@ return [
         'username' => env('DIALOG_SMS_USERNAME'),
         'password' => env('DIALOG_SMS_PASSWORD'),
         'mask' => env('DIALOG_SMS_MASK'),
+
+        // Testing against real records: comma-separated handsets that receive every SMS instead
+        // of the customer (App\Services\Sms\AllowListedSmsService). Ignored in production.
+        'allowed_numbers' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('SMS_ALLOWED_NUMBERS', ''))
+        ))),
     ],
 
     // Developer machines only (APP_ENV=local): write OTP codes to the log instead of sending SMS.
