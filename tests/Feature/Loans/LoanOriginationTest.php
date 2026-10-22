@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Models\Collateral;
 use App\Models\Customer;
 use App\Models\Loan;

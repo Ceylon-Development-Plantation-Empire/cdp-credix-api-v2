@@ -1,6 +1,9 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Finance\Support\Money;
+use App\Models\ChargeType;
 use App\Models\Collateral;
 use App\Models\GlAccount;
 use App\Models\GlJournalLine;
@@ -76,7 +79,7 @@ function rahnLoan(int $branchId, int $daysAgo): Loan
 
 function safekeepingCharged(Loan $loan): string
 {
-    return (string) Money::sum(LoanTransaction::where('loan_id', $loan->id)->where('charge_type', 'safekeeping_fee')->pluck('amount'));
+    return (string) Money::sum(LoanTransaction::where('loan_id', $loan->id)->where('charge_type_id', ChargeType::where('code', 'safekeeping_fee')->value('id'))->pluck('amount'));
 }
 
 function feeIncome(): string
@@ -104,7 +107,7 @@ it('adds a month for every month started, once, and collects them all on redempt
 
     // 70 days: months 1, 2 and 3 have started.
     expect(safekeepingCharged($loan))->toBe('3000.00')
-        ->and(LoanTransaction::where('loan_id', $loan->id)->where('charge_type', 'safekeeping_fee')->count())->toBe(3);
+        ->and(LoanTransaction::where('loan_id', $loan->id)->where('charge_type_id', ChargeType::where('code', 'safekeeping_fee')->value('id'))->count())->toBe(3);
 
     $quote = $this->actingAs($this->cashier, 'api')->getJson("/api/v1/loans/{$loan->public_id}/settlement-quote")->assertOk()->json('data');
     expect($quote['total'])->toBe('153000.00')->and($quote['profit_payable'])->toBe('0.00');

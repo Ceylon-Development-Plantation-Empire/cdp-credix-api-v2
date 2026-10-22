@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Tests\Support;
 
 use App\Enums\DocumentStatus;
@@ -80,7 +82,8 @@ final class LoanFixtures
             'employer_name' => 'Ministry of Education',
         ], $overrides));
 
-        $customer->forceFill(['id_number_normalized' => $nic])->save();
+        // The model encrypts the ID number and writes its blind index.
+        $customer->save();
 
         $customer->forceFill([
             'kyc_status' => KycStatus::Verified,

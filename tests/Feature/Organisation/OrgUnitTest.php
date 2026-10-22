@@ -1,11 +1,15 @@
 <?php
 
+declare(strict_types=1);
+
+use App\Enums\LookupType;
 use App\Models\Country;
 use App\Models\Province;
 use App\Models\Region;
 use App\Models\Zonal;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\Fixtures;
 
 beforeEach(function () {
     $this->admin = staffWith(
@@ -53,7 +57,7 @@ it('keeps every level in org_units while the API keeps its own names', function 
     // A province with branches below it cannot be deleted from under them.
     DB::table('branches')->insert([
         'name' => 'Colombo', 'code' => 'COL', 'province_id' => $province['id'], 'zone_id' => $zone['id'], 'region_id' => $region['id'],
-        'address_line1' => 'Main Street', 'city' => 'Colombo', 'phone_primary' => '0112345678', 'opening_date' => '2020-01-01', 'branch_type' => 'city',
+        'address_line1' => 'Main Street', 'city' => 'Colombo', 'phone_primary' => '0112345678', 'opening_date' => '2020-01-01', 'branch_type_id' => Fixtures::lookupId(LookupType::BranchType, 'city'),
         'created_at' => now(), 'updated_at' => now(),
     ]);
     expect(fn () => DB::table('org_units')->where('id', $province['id'])->delete())->toThrow(QueryException::class);

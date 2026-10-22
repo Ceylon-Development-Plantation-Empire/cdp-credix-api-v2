@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Enums\FinanceBasis;
 use App\Enums\PricingMethod;
 use App\Enums\RepaymentFrequency;

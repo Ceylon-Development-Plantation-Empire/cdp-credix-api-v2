@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Finance\Support\Money;
 use App\Models\ApprovalRequest;
 use App\Models\Loan;

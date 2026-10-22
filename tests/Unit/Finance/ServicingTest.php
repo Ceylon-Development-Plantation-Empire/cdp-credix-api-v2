@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Enums\AllocationComponent;
 use App\Enums\ChargeCalculation;
 use App\Enums\ChargeRecurrence;

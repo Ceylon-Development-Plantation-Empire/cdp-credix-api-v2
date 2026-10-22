@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Models\Customer;
 use App\Models\Document;
 use Database\Seeders\DocumentRequirementSeeder;
@@ -39,7 +41,8 @@ describe('documents', function () {
         $document = Document::first();
 
         expect($response->json('data'))->not->toHaveKey('path')
-            ->and($document->path)->toStartWith('documents/')
+            // Stored by the senior's FileUploadTrait (uploads/<module>/<random name>).
+            ->and($document->path)->toStartWith('uploads/documents/')
             ->and($document->path)->not->toContain('evil')
             ->and($document->path)->toEndWith('.pdf');
 
@@ -50,6 +53,12 @@ describe('documents', function () {
         upload($this, $this->publicId, 'nic-copy', 'shell.pdf', 'application/x-php')
             ->assertStatus(422)
             ->assertJsonPath('code', 'DOCUMENT_FORMAT_NOT_ALLOWED');
+
+        // The other way round too: real PDF content under a script extension is never stored as .php.
+        upload($this, $this->publicId, 'nic-copy', 'invoice.php', 'application/pdf')
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'DOCUMENT_FORMAT_NOT_ALLOWED');
+        expect(Document::count())->toBe(0);
     });
 
     it('needs a second person to verify a document', function () {
@@ -189,7 +198,7 @@ describe('borrower groups', function () {
     it('only takes members from the group branch', function () {
         $kandy = Fixtures::branch('Kandy');
         $kandyCustomer = Customer::first()->replicate(['customer_no', 'public_id']);
-        $kandyCustomer->forceFill(['branch_id' => $kandy, 'id_number_normalized' => '199012300567', 'id_number' => '199012300567', 'date_of_birth' => '1990-05-03'])->save();
+        $kandyCustomer->forceFill(['branch_id' => $kandy, 'id_number' => '199012300567', 'date_of_birth' => '1990-05-03'])->save();
 
         // A Colombo user cannot even see the Kandy customer…
         $this->actingAs($this->groupAdmin, 'api')

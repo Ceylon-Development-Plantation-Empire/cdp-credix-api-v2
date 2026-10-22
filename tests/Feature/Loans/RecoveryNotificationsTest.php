@@ -1,6 +1,9 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Enums\NotificationEvent;
+use App\Models\LoanInstallment;
 use App\Models\NotificationLog;
 use App\Models\RecoveryCase;
 use App\Models\Template;
@@ -157,8 +160,16 @@ describe('credit score and reports', function () {
 
         $staff = Fixtures::staffInBranch($this->branchId, 'Customer Index');
         // Two installments are past their grace period and unpaid.
-        $this->actingAs($staff, 'api')->getJson("/api/v1/customers/{$loan->customer->public_id}/credit-score")
-            ->assertOk()->assertJsonPath('data.missed', 2)->assertJsonPath('data.score', 480);
+        $score = $this->actingAs($staff, 'api')->getJson("/api/v1/customers/{$loan->customer->public_id}/credit-score")
+            ->assertOk()->assertJsonPath('data.missed', 2)->assertJsonPath('data.score', 480)->json('data');
+
+        // The record behind the score, per loan.
+        $first = LoanInstallment::where('loan_id', $loan->id)->orderBy('installment_no')->first();
+        expect($score['loans'])->toHaveCount(1)
+            ->and($score['loans'][0]['loan_no'])->toBe($loan->loan_no)
+            ->and($score['loans'][0]['missed'])->toBe(2)
+            ->and($score['worst_days_late'])->toBe((int) $first->due_date->diffInDays(today()))
+            ->and($score['loans'][0]['worst_days_late'])->toBe($score['worst_days_late']);
     });
 
     it('charts what was paid out and collected per month for the dashboard', function () {

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Enums\KycStatus;
 use App\Models\Customer;
 use Tests\Support\Fixtures;
@@ -48,7 +50,7 @@ describe('registration', function () {
 
         $customer = Customer::first();
 
-        expect($customer->id_number_normalized)->toBe('198534000937')
+        expect($customer->normalizedIdNumber())->toBe('198534000937')
             ->and($customer->phone_primary)->toBe('+94771234567')
             ->and($customer->customer_no)->toBe('CUS-'.str_pad((string) $customer->id, 6, '0', STR_PAD_LEFT))
             ->and($response->json('data'))->not->toHaveKey('id');
@@ -97,6 +99,55 @@ describe('registration', function () {
             ->assertJsonFragment(['field' => 'id_number'])
             ->assertJsonFragment(['field' => 'phone_primary'])
             ->assertJsonFragment(['field' => 'district']);
+    });
+
+    it('keeps employer and business contacts for verification, masked like the customer\'s own', function () {
+        $user = Fixtures::staffInBranch($this->branchId, 'Customer Create');
+
+        $this->actingAs($user, 'api')
+            ->postJson('/api/v1/customers', customerPayload($this->branchId, [
+                'landmark' => 'Opposite the Bodhi tree',
+                'employer_phone' => '011 234 5678',
+                'employer_email' => 'hr@moe.gov.lk',
+                'business_nature' => 'Tuition classes',
+                'business_address' => '4 School Lane, Maharagama',
+                'business_phone' => '0719876543',
+            ]))
+            ->assertCreated()
+            ->assertJsonPath('data.address.landmark', 'Opposite the Bodhi tree')
+            ->assertJsonPath('data.employment.business_nature', 'Tuition classes')
+            ->assertJsonPath('data.employment.employer_phone', '+9411****678')
+            ->assertJsonPath('data.employment.employer_email', 'hr*@moe.gov.lk');
+
+        expect(Customer::first()->employer_phone)->toBe('+94112345678')
+            ->and(Customer::first()->business_phone)->toBe('+94719876543');
+    });
+
+    it('says where a person is registered when it is another branch, without a link to the record', function () {
+        $kandy = Fixtures::branch('Kandy');
+        $kandyOfficer = Fixtures::staffInBranch($kandy, 'Customer Create');
+        $this->actingAs($kandyOfficer, 'api')->postJson('/api/v1/customers', customerPayload($kandy))->assertCreated();
+
+        $this->actingAs(Fixtures::staffInBranch($this->branchId, 'Customer Index'), 'api')
+            ->getJson('/api/v1/customers/lookup?id_type=nic&id_number=853400937V')
+            ->assertOk()
+            ->assertJsonPath('data.exists', true)
+            ->assertJsonPath('data.customer.branch', 'Kandy')
+            ->assertJsonPath('data.customer.accessible', false)
+            ->assertJsonPath('data.customer.public_id', null);
+    });
+
+    it('ranks customers by credit score for the credit scores screen', function () {
+        $user = Fixtures::staffInBranch($this->branchId, 'Customer Create', 'Customer Index');
+        $this->actingAs($user, 'api')->postJson('/api/v1/customers', customerPayload($this->branchId))->assertCreated();
+        $this->actingAs($user, 'api')->postJson('/api/v1/customers', customerPayload($this->branchId, ['id_number' => '199012345678', 'date_of_birth' => '1990-05-02', 'phone_primary' => '0771111111']))->assertCreated();
+        Customer::where('id_number_hash', Customer::idNumberHash('198534000937'))->update(['credit_score' => 720]);
+        Customer::where('id_number_hash', Customer::idNumberHash('199012345678'))->update(['credit_score' => 480]);
+
+        $this->actingAs($user, 'api')->getJson('/api/v1/customers?sort=-credit_score')
+            ->assertOk()
+            ->assertJsonPath('data.items.0.credit_score', 720)
+            ->assertJsonPath('data.items.1.credit_score', 480);
     });
 
     it('finds a registered person by either NIC format', function () {

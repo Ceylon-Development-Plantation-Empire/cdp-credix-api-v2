@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Enums\SettingType;
 use App\Finance\Pricing\GoldPawn;
 use App\Finance\Support\Money;

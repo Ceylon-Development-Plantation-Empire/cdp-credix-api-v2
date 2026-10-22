@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Enums\ProductStatus;
 use App\Models\Product;
 use Database\Seeders\ProductCatalogSeeder;

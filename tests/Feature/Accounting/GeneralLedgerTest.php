@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Finance\Support\Money;
 use App\Models\GlAccount;
 use App\Models\GlJournal;

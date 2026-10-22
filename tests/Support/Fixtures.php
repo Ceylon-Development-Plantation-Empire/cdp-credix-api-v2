@@ -1,9 +1,14 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Tests\Support;
 
+use App\Enums\LookupType;
+use App\Models\Employee;
 use App\Models\User;
 use App\Services\SmsService;
+use App\Support\Lookups\LookupRegistry;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -13,11 +18,18 @@ use Illuminate\Support\Str;
  */
 final class Fixtures
 {
+    /**
+     * The id of a seeded lookup value (ReferenceDataSeeder runs before every test).
+     */
+    public static function lookupId(LookupType $type, string $code): int
+    {
+        return (int) app(LookupRegistry::class)->idFor($type, $code);
+    }
+
     public static function branch(string $name = 'Colombo'): int
     {
         $code = strtoupper(Str::random(6));
         $now = now();
-
         $countryId = DB::table('org_units')->insertGetId(['unit_type' => 'country', 'name' => 'Sri Lanka', 'code' => 'C'.$code, 'created_at' => $now, 'updated_at' => $now]);
         $provinceId = DB::table('org_units')->insertGetId(['unit_type' => 'province', 'name' => 'Western', 'code' => 'P'.$code, 'parent_id' => $countryId, 'created_at' => $now, 'updated_at' => $now]);
         $zonalId = DB::table('org_units')->insertGetId(['unit_type' => 'zone', 'name' => 'Zone', 'code' => 'Z'.$code, 'parent_id' => $provinceId, 'created_at' => $now, 'updated_at' => $now]);
@@ -33,7 +45,7 @@ final class Fixtures
             'city' => $name,
             'phone_primary' => '0112345678',
             'opening_date' => '2020-01-01',
-            'branch_type' => 'city',
+            'branch_type_id' => self::lookupId(LookupType::BranchType, 'city'),
             'created_at' => $now,
             'updated_at' => $now,
         ]);
@@ -46,11 +58,18 @@ final class Fixtures
     {
         $code = strtoupper(Str::random(6));
         $now = now();
-
         $departmentId = DB::table('departments')->insertGetId(['name' => 'Credit', 'code' => 'D'.$code, 'created_at' => $now, 'updated_at' => $now]);
-        $designationId = DB::table('designations')->insertGetId(['department_id' => $departmentId, 'name' => 'Officer', 'code' => 'G'.$code, 'level' => 'entry', 'created_at' => $now, 'updated_at' => $now]);
+        $designationId = DB::table('designations')->insertGetId([
+            'department_id' => $departmentId,
+            'name' => 'Officer',
+            'code' => 'G'.$code,
+            'level_id' => self::lookupId(LookupType::DesignationLevel, 'entry'),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
 
-        $employeeId = DB::table('employees')->insertGetId([
+        // Through the model, so the ID number is encrypted and its blind index written as in production.
+        $employee = Employee::create([
             'f_name' => 'Test',
             'l_name' => 'Officer',
             'full_name' => 'Test Officer',
@@ -63,12 +82,10 @@ final class Fixtures
             'date_of_birth' => '1990-01-01',
             'email' => strtolower($code).'@example.com',
             'phone_primary' => '0771234567',
-            'created_at' => $now,
-            'updated_at' => $now,
         ]);
 
         $user = staffWith(...$permissions);
-        $user->forceFill(['employee_id' => $employeeId])->save();
+        $user->forceFill(['employee_id' => $employee->id])->save();
 
         return $user->fresh();
     }
