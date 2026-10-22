@@ -27,7 +27,7 @@ class LoanTransactionResource extends JsonResource
                 'customer' => $this->loan->customer ? [
                     'id' => $this->loan->customer->id,
                     'public_id' => $this->loan->customer->public_id,
-                    'customer_code' => $this->loan->customer->customer_no,
+                    'customer_no' => $this->loan->customer->customer_no,
                     'full_name' => $this->loan->customer->full_name,
                     'name_with_initials' => $this->loan->customer->name_with_initials,
                 ] : null,
@@ -43,7 +43,7 @@ class LoanTransactionResource extends JsonResource
                 return $p ? [
                     'id' => $p->id,
                     'public_id' => $p->public_id,
-                    'customer_code' => $p->customer_no,
+                    'customer_no' => $p->customer_no,
                     'full_name' => $p->full_name,
                     'name_with_initials' => $p->name_with_initials,
                 ] : null;
