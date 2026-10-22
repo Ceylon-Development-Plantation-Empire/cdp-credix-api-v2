@@ -14,6 +14,7 @@ use App\Models\BorrowerGroup;
 use App\Models\Customer;
 use App\Services\Groups\BorrowerGroupService;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
 use App\Traits\HandlesApiErrors;
 use App\Traits\PaginatesResources;
 use Illuminate\Http\Request;
@@ -22,7 +23,7 @@ use Illuminate\Routing\Controllers\Middleware;
 
 class BorrowerGroupController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait, HandlesApiErrors, PaginatesResources;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors, PaginatesResources;
 
     public function __construct(
         protected BorrowerGroupService $groups,
@@ -31,6 +32,7 @@ class BorrowerGroupController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
+            new Middleware('permission:Borrower Group Delete', only: ['destroy']),
             new Middleware('permission:Borrower Group Index', only: ['index', 'show']),
             new Middleware('permission:Borrower Group Create', only: ['store']),
             new Middleware('permission:Borrower Group Update', only: ['update']),
@@ -196,6 +198,26 @@ class BorrowerGroupController extends Controller implements HasMiddleware
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to remove member', $th);
+        }
+    }
+
+    /**
+     * A group that never borrowed can be removed (with its member history); one with loans stays.
+     */
+    public function destroy(string $publicId)
+    {
+        try {
+            return $this->destroyRecord(BorrowerGroup::where('public_id', $publicId)->first(), 'borrower group', 'BorrowerGroup', function (BorrowerGroup $group) {
+                if (\App\Models\Loan::where('borrower_group_id', $group->id)->exists()) {
+                    return 'This group has loans or applications. It cannot be deleted.';
+                }
+
+                $group->members()->delete();
+
+                return null;
+            });
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to delete borrower group', $th);
         }
     }
 }

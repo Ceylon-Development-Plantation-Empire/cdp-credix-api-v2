@@ -213,6 +213,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::post('/', [LookupController::class, 'store']);
         Route::get('{id}', [LookupController::class, 'show'])->whereNumber('id');
         Route::put('{id}', [LookupController::class, 'update'])->whereNumber('id');
+        Route::delete('{id}', [LookupController::class, 'destroy'])->whereNumber('id');
     });
 
     // Fee and charge types (upfront fees are data; late payment, early settlement and
@@ -222,6 +223,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::post('/', [ChargeTypeController::class, 'store']);
         Route::get('{code}', [ChargeTypeController::class, 'show']);
         Route::put('{code}', [ChargeTypeController::class, 'update']);
+        Route::delete('{code}', [ChargeTypeController::class, 'destroy']);
     });
 
     // Collateral types (data: lookups of type collateral_type) with their fields and documents,
@@ -235,6 +237,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::post('/', [ProductCategoryController::class, 'store']);
         Route::get('{slug}', [ProductCategoryController::class, 'show']);
         Route::put('{slug}', [ProductCategoryController::class, 'update']);
+        Route::delete('{slug}', [ProductCategoryController::class, 'destroy']);
         Route::patch('{slug}/toggle-status', [ProductCategoryController::class, 'toggleStatus']);
     });
 
@@ -270,6 +273,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::post('/', [DocumentTypeController::class, 'store']);
         Route::get('{slug}', [DocumentTypeController::class, 'show']);
         Route::put('{slug}', [DocumentTypeController::class, 'update']);
+        Route::delete('{slug}', [DocumentTypeController::class, 'destroy']);
         Route::patch('{slug}/toggle-status', [DocumentTypeController::class, 'toggleStatus']);
     });
 
@@ -290,6 +294,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::get('{publicId}/eligibility', [CustomerController::class, 'eligibility']);
         Route::get('{publicId}/credit-score', [CustomerController::class, 'creditScore']);
         Route::put('{publicId}', [CustomerController::class, 'update']);
+        Route::delete('{publicId}', [CustomerController::class, 'destroy']);
         Route::patch('{publicId}/toggle-status', [CustomerController::class, 'toggleStatus']);
 
         // KYC by OTP – tight limits so codes cannot be sprayed or guessed
@@ -329,6 +334,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::post('/', [BorrowerGroupController::class, 'store']);
         Route::get('{publicId}', [BorrowerGroupController::class, 'show']);
         Route::put('{publicId}', [BorrowerGroupController::class, 'update']);
+        Route::delete('{publicId}', [BorrowerGroupController::class, 'destroy']);
         Route::post('{publicId}/members', [BorrowerGroupController::class, 'addMember']);
         Route::patch('{publicId}/members/{memberId}', [BorrowerGroupController::class, 'changeRole']);
         Route::post('{publicId}/members/{memberId}/leave', [BorrowerGroupController::class, 'removeMember']);
@@ -415,6 +421,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
     Route::post('templates', [TemplateController::class, 'store']);
     Route::get('templates/{id}', [TemplateController::class, 'show'])->whereNumber('id');
     Route::put('templates/{id}', [TemplateController::class, 'update'])->whereNumber('id');
+    Route::delete('templates/{id}', [TemplateController::class, 'destroy'])->whereNumber('id');
     Route::get('notification-logs', [TemplateController::class, 'logs']);
 
     // Legal documents: the wording (templates of the document channel) and what is prepared for each loan
@@ -424,6 +431,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::post('/', [LegalTemplateController::class, 'store']);
         Route::get('{id}', [LegalTemplateController::class, 'show'])->whereNumber('id');
         Route::put('{id}', [LegalTemplateController::class, 'update'])->whereNumber('id');
+        Route::delete('{id}', [LegalTemplateController::class, 'destroy'])->whereNumber('id');
     });
     Route::prefix('legal-documents')->group(function () {
         Route::get('/', [LegalDocumentController::class, 'index']);
@@ -452,6 +460,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::get('accounts', [GlAccountController::class, 'index']);
         Route::post('accounts', [GlAccountController::class, 'store']);
         Route::put('accounts/{id}', [GlAccountController::class, 'update'])->whereNumber('id');
+        Route::delete('accounts/{id}', [GlAccountController::class, 'destroy'])->whereNumber('id');
         Route::get('accounts/{id}/statement', [GlReportController::class, 'statement'])->whereNumber('id');
 
         Route::get('journals', [GlJournalController::class, 'index']);

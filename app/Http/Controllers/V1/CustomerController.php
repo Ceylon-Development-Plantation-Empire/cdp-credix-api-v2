@@ -21,6 +21,7 @@ use App\Services\Customers\CustomerService;
 use App\Services\Loans\EligibilityService;
 use App\Support\Lookups\LookupRegistry;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
 use App\Traits\HandlesApiErrors;
 use App\Traits\PaginatesResources;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -32,7 +33,7 @@ use Illuminate\Routing\Controllers\Middleware;
  */
 class CustomerController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait, HandlesApiErrors, PaginatesResources;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors, PaginatesResources;
 
     protected const DETAIL_RELATIONS = ['branch', 'recommendedBy', 'currentGroupMembership.group'];
 
@@ -43,6 +44,7 @@ class CustomerController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
+            new Middleware('permission:Customer Delete', only: ['destroy']),
             new Middleware('permission:Customer Index', only: ['index', 'show', 'lookup', 'eligibility', 'creditScore', 'bankOptions']),
             new Middleware('permission:Customer Create', only: ['store']),
             new Middleware('permission:Customer Update', only: ['update']),
@@ -265,6 +267,23 @@ class CustomerController extends Controller implements HasMiddleware
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to calculate credit score', $th);
+        }
+    }
+
+    /**
+     * A customer with any loan history (borrower, co-borrower, member or guarantor) stays; deactivate instead.
+     */
+    public function destroy(string $publicId)
+    {
+        try {
+            return $this->destroyRecord(Customer::where('public_id', $publicId)->first(), 'customer', 'Customer', fn (Customer $customer) => match (true) {
+                \App\Models\LoanParty::where('customer_id', $customer->id)->exists() => 'This customer is on a loan or application. Deactivate the customer instead.',
+                \App\Models\Loan::where('customer_id', $customer->id)->exists() => 'This customer has loans. Deactivate the customer instead.',
+                $customer->groupMemberships()->exists() => 'This customer belongs to (or was in) a borrower group. Deactivate the customer instead.',
+                default => null,
+            });
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to delete customer', $th);
         }
     }
 }

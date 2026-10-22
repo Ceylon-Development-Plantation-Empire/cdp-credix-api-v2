@@ -10,6 +10,9 @@ use App\Http\Requests\Catalog\UpdateChargeTypeRequest;
 use App\Http\Resources\Catalog\ChargeTypeResource;
 use App\Models\ChargeType;
 use App\Services\Catalog\ChargeTypeService;
+use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
+use App\Traits\HandlesApiErrors;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
@@ -20,6 +23,8 @@ use Illuminate\Routing\Controllers\Middleware;
  */
 class ChargeTypeController extends Controller implements HasMiddleware
 {
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors;
+
     public function __construct(
         protected ChargeTypeService $chargeTypes,
     ) {}
@@ -31,7 +36,7 @@ class ChargeTypeController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:Charge Type Index', only: ['index', 'show']),
-            new Middleware('permission:Charge Type Manage', only: ['store', 'update']),
+            new Middleware('permission:Charge Type Manage', only: ['store', 'update', 'destroy']),
         ];
     }
 
@@ -85,5 +90,14 @@ class ChargeTypeController extends Controller implements HasMiddleware
             'message' => 'Charge type updated successfully',
             'data' => new ChargeTypeResource($type),
         ], 200);
+    }
+
+    public function destroy(string $code): JsonResponse
+    {
+        return $this->destroyRecord(ChargeType::query()->where('code', $code)->first(), 'charge type', 'ChargeType', fn (ChargeType $type) => match (true) {
+            (bool) $type->is_system => 'A system charge type cannot be deleted.',
+            $type->productCharges()->exists() => 'Products use this charge type. Deactivate it instead.',
+            default => null,
+        });
     }
 }

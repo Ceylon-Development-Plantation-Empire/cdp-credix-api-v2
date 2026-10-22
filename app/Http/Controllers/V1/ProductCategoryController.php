@@ -11,6 +11,7 @@ use App\Http\Resources\Catalog\ProductCategoryResource;
 use App\Models\ProductCategory;
 use App\Services\Catalog\ProductCategoryService;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
 use App\Traits\HandlesApiErrors;
 use App\Traits\PaginatesResources;
 use Illuminate\Http\Request;
@@ -19,7 +20,7 @@ use Illuminate\Routing\Controllers\Middleware;
 
 class ProductCategoryController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait, HandlesApiErrors, PaginatesResources;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors, PaginatesResources;
 
     public function __construct(
         protected ProductCategoryService $categories,
@@ -28,6 +29,7 @@ class ProductCategoryController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
+            new Middleware('permission:Product Category Delete', only: ['destroy']),
             new Middleware('permission:Product Category Index', only: ['index', 'show', 'tree']),
             new Middleware('permission:Product Category Create', only: ['store']),
             new Middleware('permission:Product Category Update', only: ['update']),
@@ -186,6 +188,23 @@ class ProductCategoryController extends Controller implements HasMiddleware
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to toggle product category status', $th);
+        }
+    }
+
+    /**
+     * Only an empty category goes (no sub-categories, products or templates); otherwise switch it off.
+     */
+    public function destroy(string $slug)
+    {
+        try {
+            return $this->destroyRecord(ProductCategory::findBySlug($slug), 'product category', 'ProductCategory', fn (ProductCategory $category) => match (true) {
+                $category->children()->exists() => 'This category has sub-categories. Delete or move them first.',
+                $category->products()->exists() => 'Products use this category. Deactivate it instead.',
+                \App\Models\Template::where('category_id', $category->id)->exists() => 'Templates use this category. Deactivate it instead.',
+                default => null,
+            });
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to delete product category', $th);
         }
     }
 }

@@ -12,6 +12,9 @@ use App\Http\Requests\Settings\UpdateLookupRequest;
 use App\Http\Resources\Settings\LookupResource;
 use App\Models\Lookup;
 use App\Services\Settings\LookupService;
+use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
+use App\Traits\HandlesApiErrors;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
@@ -25,6 +28,8 @@ use Illuminate\Routing\Controllers\Middleware;
  */
 class LookupController extends Controller implements HasMiddleware
 {
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors;
+
     public function __construct(
         protected LookupService $lookups,
     ) {}
@@ -36,7 +41,7 @@ class LookupController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:Lookup Index', only: ['types', 'index', 'show']),
-            new Middleware('permission:Lookup Manage', only: ['store', 'update']),
+            new Middleware('permission:Lookup Manage', only: ['store', 'update', 'destroy']),
         ];
     }
 
@@ -130,5 +135,10 @@ class LookupController extends Controller implements HasMiddleware
             'message' => 'Lookup value updated successfully',
             'data' => new LookupResource($lookup),
         ], 200);
+    }
+
+    public function destroy(int $id): JsonResponse
+    {
+        return $this->destroyRecord(Lookup::query()->find($id), 'lookup value', 'Lookup', fn (Lookup $lookup) => $lookup->is_system ? 'A system value cannot be deleted. Deactivate it instead.' : null);
     }
 }

@@ -10,6 +10,7 @@ use App\Http\Requests\Documents\UpdateDocumentTypeRequest;
 use App\Http\Resources\Documents\DocumentTypeResource;
 use App\Models\DocumentType;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
 use App\Traits\HandlesApiErrors;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -17,11 +18,12 @@ use Illuminate\Routing\Controllers\Middleware;
 
 class DocumentTypeController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait, HandlesApiErrors;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors;
 
     public static function middleware(): array
     {
         return [
+            new Middleware('permission:Document Type Delete', only: ['destroy']),
             new Middleware('permission:Document Type Index', only: ['index', 'show']),
             new Middleware('permission:Document Type Create', only: ['store']),
             new Middleware('permission:Document Type Update', only: ['update']),
@@ -155,5 +157,18 @@ class DocumentTypeController extends Controller implements HasMiddleware
         }
 
         return $data;
+    }
+
+    public function destroy(string $slug)
+    {
+        try {
+            return $this->destroyRecord(DocumentType::findBySlug($slug), 'document type', 'DocumentType', fn (DocumentType $type) => match (true) {
+                $type->requirements()->exists() => 'Document requirements use this type. Remove them or deactivate the type instead.',
+                \App\Models\Document::withTrashed()->where('document_type_id', $type->id)->exists() => 'Documents were uploaded with this type. Deactivate it instead.',
+                default => null,
+            });
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to delete document type', $th);
+        }
     }
 }

@@ -122,6 +122,7 @@ class PermissionsSeeder extends Seeder
             ['name' => 'Product Category Index', 'group_name' => 'Product Catalogue Permissions'],
             ['name' => 'Product Category Create', 'group_name' => 'Product Catalogue Permissions'],
             ['name' => 'Product Category Update', 'group_name' => 'Product Catalogue Permissions'],
+            ['name' => 'Product Category Delete', 'group_name' => 'Product Catalogue Permissions'],
             ['name' => 'Product Category Toggle Status', 'group_name' => 'Product Catalogue Permissions'],
             ['name' => 'Product Index', 'group_name' => 'Product Catalogue Permissions'],
             ['name' => 'Product Create', 'group_name' => 'Product Catalogue Permissions'],
@@ -139,6 +140,7 @@ class PermissionsSeeder extends Seeder
             ['name' => 'Document Type Index', 'group_name' => 'Document Configuration Permissions'],
             ['name' => 'Document Type Create', 'group_name' => 'Document Configuration Permissions'],
             ['name' => 'Document Type Update', 'group_name' => 'Document Configuration Permissions'],
+            ['name' => 'Document Type Delete', 'group_name' => 'Document Configuration Permissions'],
             ['name' => 'Document Type Toggle Status', 'group_name' => 'Document Configuration Permissions'],
             ['name' => 'Document Requirement Index', 'group_name' => 'Document Configuration Permissions'],
             ['name' => 'Document Requirement Create', 'group_name' => 'Document Configuration Permissions'],
@@ -153,6 +155,7 @@ class PermissionsSeeder extends Seeder
             ['name' => 'Customer Index', 'group_name' => 'Customer Management Permissions'],
             ['name' => 'Customer Create', 'group_name' => 'Customer Management Permissions'],
             ['name' => 'Customer Update', 'group_name' => 'Customer Management Permissions'],
+            ['name' => 'Customer Delete', 'group_name' => 'Customer Management Permissions'],
             ['name' => 'Customer Toggle Status', 'group_name' => 'Customer Management Permissions'],
             // Full NIC, date of birth, phone, email and bank account numbers instead of masked values.
             ['name' => 'Customer View Sensitive', 'group_name' => 'Customer Management Permissions'],
@@ -172,6 +175,7 @@ class PermissionsSeeder extends Seeder
             ['name' => 'Borrower Group Index', 'group_name' => 'Borrower Group Permissions'],
             ['name' => 'Borrower Group Create', 'group_name' => 'Borrower Group Permissions'],
             ['name' => 'Borrower Group Update', 'group_name' => 'Borrower Group Permissions'],
+            ['name' => 'Borrower Group Delete', 'group_name' => 'Borrower Group Permissions'],
             ['name' => 'Borrower Group Member Manage', 'group_name' => 'Borrower Group Permissions'],
 
             /* Loans */

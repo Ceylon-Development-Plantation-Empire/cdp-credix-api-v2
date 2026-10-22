@@ -10,6 +10,7 @@ use App\Http\Requests\Accounting\GlAccountRequest;
 use App\Http\Resources\Accounting\GlAccountResource;
 use App\Models\GlAccount;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
 use App\Traits\HandlesApiErrors;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -21,13 +22,13 @@ use Illuminate\Routing\Controllers\Middleware;
  */
 class GlAccountController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait, HandlesApiErrors;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors;
 
     public static function middleware(): array
     {
         return [
             new Middleware('permission:GL Account Index', only: ['index']),
-            new Middleware('permission:GL Account Manage', only: ['store', 'update']),
+            new Middleware('permission:GL Account Manage', only: ['store', 'update', 'destroy']),
         ];
     }
 
@@ -106,6 +107,19 @@ class GlAccountController extends Controller implements HasMiddleware
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to update GL account', $th);
+        }
+    }
+
+    public function destroy(int $id)
+    {
+        try {
+            return $this->destroyRecord(GlAccount::find($id), 'GL account', 'GlAccount', fn (GlAccount $account) => match (true) {
+                $account->isSystem() => 'A system account cannot be deleted.',
+                $account->lines()->exists() => 'An account with entries cannot be deleted. Deactivate it instead.',
+                default => null,
+            });
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to delete GL account', $th);
         }
     }
 }

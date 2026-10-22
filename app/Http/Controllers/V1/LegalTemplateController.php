@@ -12,6 +12,8 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Template;
 use App\Services\Legal\LegalDocumentService;
+use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
 use App\Traits\HandlesApiErrors;
 use App\Traits\PaginatesResources;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -26,7 +28,7 @@ use Illuminate\Routing\Controllers\Middleware;
  */
 class LegalTemplateController extends Controller implements HasMiddleware
 {
-    use HandlesApiErrors, PaginatesResources;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors, PaginatesResources;
 
     public function __construct(
         protected LegalDocumentService $legal,
@@ -36,7 +38,7 @@ class LegalTemplateController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:Legal Document Index', only: ['index', 'activeList', 'show']),
-            new Middleware('permission:Legal Template Manage', only: ['store', 'update']),
+            new Middleware('permission:Legal Template Manage', only: ['store', 'update', 'destroy']),
         ];
     }
 
@@ -175,5 +177,14 @@ class LegalTemplateController extends Controller implements HasMiddleware
     protected function documents()
     {
         return Template::query()->where('channel', NotificationChannel::Document->value);
+    }
+
+    public function destroy(int $id)
+    {
+        try {
+            return $this->destroyRecord($this->documents()->find($id), 'legal template', 'LegalTemplate');
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to delete legal template', $th);
+        }
     }
 }

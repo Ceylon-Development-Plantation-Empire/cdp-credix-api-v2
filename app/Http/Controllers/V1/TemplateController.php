@@ -16,6 +16,7 @@ use App\Models\Template;
 use App\Services\Notifications\TemplateService;
 use App\Support\BranchAccess;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
 use App\Traits\HandlesApiErrors;
 use App\Traits\PaginatesResources;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -28,7 +29,7 @@ use Illuminate\Routing\Controllers\Middleware;
  */
 class TemplateController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait, HandlesApiErrors, PaginatesResources;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors, PaginatesResources;
 
     public function __construct(
         protected TemplateService $templates,
@@ -38,7 +39,7 @@ class TemplateController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:Template Index', only: ['index', 'show']),
-            new Middleware('permission:Template Manage', only: ['store', 'update']),
+            new Middleware('permission:Template Manage', only: ['store', 'update', 'destroy']),
             new Middleware('permission:Notification Log Index', only: ['logs']),
         ];
     }
@@ -190,6 +191,17 @@ class TemplateController extends Controller implements HasMiddleware
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve notification log', $th);
+        }
+    }
+
+    public function destroy(int $id)
+    {
+        try {
+            return $this->destroyRecord(Template::find($id), 'template', 'Template', fn (Template $template) => NotificationEvent::tryFrom($template->slug)
+                ? 'A template of a system event cannot be deleted. Deactivate it instead.'
+                : null);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to delete template', $th);
         }
     }
 }
