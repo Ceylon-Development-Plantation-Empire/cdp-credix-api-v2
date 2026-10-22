@@ -1,12 +1,14 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Enums\AllocationComponent;
 use App\Enums\ApprovalAction;
+use App\Enums\ChargeBehaviour;
 use App\Enums\ChargeCalculation;
 use App\Enums\ChargeRecurrence;
-use App\Enums\ChargeType;
 use App\Enums\FinanceBasis;
 use App\Enums\LoanStatus;
 use App\Enums\PaymentChannel;
@@ -21,6 +23,7 @@ use App\Models\LoanInstallment;
 use App\Models\Setting;
 use App\Models\User;
 use App\Services\Approvals\ApprovalRequestService;
+use App\Support\BusinessDate;
 use Carbon\CarbonImmutable;
 
 /**
@@ -70,7 +73,7 @@ class PenaltyService
                 $amount = $this->calculator->amount($rule['calculation'], $rule['value'], $installment->unpaidExcludingPenalty(), $rule['min'], $rule['max']);
 
                 if ($amount->isPositive()) {
-                    $this->ledger->raise($loan, $installment, AllocationComponent::Penalty, $amount, $date, 'Late payment charge', $rule['is_charity'], ChargeType::LatePayment);
+                    $this->ledger->raise($loan, $installment, AllocationComponent::Penalty, $amount, $date, 'Late payment charge', $rule['is_charity'], ChargeBehaviour::LatePayment);
                     $raised++;
                 }
 
@@ -103,7 +106,7 @@ class PenaltyService
         $this->assertWaivable($loan, $installment, $amount);
 
         $this->ledger->credit($loan, TransactionType::Waiver, Money::of($amount), [new AllocationLine($installment->id, AllocationComponent::Penalty, Money::of($amount))], [
-            'value_date' => today()->toDateString(),
+            'value_date' => BusinessDate::today()->toDateString(),
             'channel' => PaymentChannel::System,
             'narration' => "Penalty waiver (installment {$installmentNo}): {$reason}",
             'posted_by' => $requestedBy,
@@ -119,7 +122,7 @@ class PenaltyService
      */
     public function rule(Loan $loan): array
     {
-        $charge = collect($this->pricing->termsOf($loan)['charges'])->firstWhere('charge_type', ChargeType::LatePayment->value);
+        $charge = collect($this->pricing->termsOf($loan)['charges'])->firstWhere('behaviour', ChargeBehaviour::LatePayment->value);
         $islamic = $loan->finance_basis === FinanceBasis::Islamic;
 
         if ($charge) {

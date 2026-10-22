@@ -1,10 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Enums\AllocationComponent;
+use App\Enums\ChargeBehaviour;
 use App\Enums\ChargeCalculation;
-use App\Enums\ChargeType;
 use App\Enums\ClosureReason;
 use App\Enums\FinanceBasis;
 use App\Enums\LoanStatus;
@@ -20,6 +22,8 @@ use App\Models\Loan;
 use App\Models\LoanInstallment;
 use App\Models\LoanTransaction;
 use App\Models\User;
+use App\Support\BusinessDate;
+use App\Support\Idempotency;
 use App\Traits\ActivityLogTrait;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
@@ -56,7 +60,7 @@ class EarlySettlementService
      */
     public function quote(Loan $loan, ?CarbonImmutable $date = null): array
     {
-        $date ??= CarbonImmutable::today();
+        $date ??= BusinessDate::todayImmutable();
         $this->assertSettleable($loan);
 
         $q = $this->compute($loan, $date);
@@ -80,15 +84,14 @@ class EarlySettlementService
     {
         return DB::transaction(function () use ($loan, $data, $idempotencyKey, $by) {
             $keyHash = hash('sha256', "settlement|{$loan->id}|{$idempotencyKey}");
+            $loan = $this->workflow->lock($loan);
 
-            if ($existing = LoanTransaction::where('idempotency_key', $keyHash)->first()) {
+            if ($existing = Idempotency::replay($keyHash, $data['amount'])) {
                 return $existing;
             }
-
-            $loan = $this->workflow->lock($loan);
             $this->assertSettleable($loan);
 
-            $today = CarbonImmutable::today();
+            $today = BusinessDate::todayImmutable();
             // Normally raised already by the nightly run; this covers a night that failed.
             $this->safekeeping->apply($loan, $today);
             $q = $this->compute($loan, $today);
@@ -103,7 +106,7 @@ class EarlySettlementService
 
             if ($q['fee']->isPositive()) {
                 $target = $future->first() ?? $q['arrears_installments']->last();
-                $this->ledger->raise($loan, $target, AllocationComponent::Charge, $q['fee'], $today, 'Early settlement fee', chargeType: ChargeType::EarlySettlement);
+                $this->ledger->raise($loan, $target, AllocationComponent::Charge, $q['fee'], $today, 'Early settlement fee', behaviour: ChargeBehaviour::EarlySettlement);
             }
 
             // Re-read the lines so the fee just raised is part of what the cash pays.
@@ -139,7 +142,7 @@ class EarlySettlementService
             PaymentPosted::dispatch($transaction);
 
             return $transaction;
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -169,7 +172,7 @@ class EarlySettlementService
             $lastDue = $loan->installments()->current()->where('due_date', '<=', $date->toDateString())->max('due_date');
             // From the last due date, else from the start of the schedule in force (a renewal or
             // restructure starts a new one), else from disbursement.
-            $accrueFrom = CarbonImmutable::parse($lastDue ?? $loan->schedule_starts_on ?? $loan->disbursed_at)->startOfDay();
+            $accrueFrom = BusinessDate::of($lastDue ?? $loan->schedule_starts_on ?? $loan->disbursed_at);
             $fee = $this->fee($terms, $futurePrincipal);
 
             $quote = $this->calculator->conventional($arrears, $futurePrincipal, $loan->rate, $accrueFrom, $date, $fee);
@@ -238,7 +241,7 @@ class EarlySettlementService
      */
     protected function fee(array $terms, BigDecimal $outstandingPrincipal): BigDecimal
     {
-        $charge = collect($terms['charges'])->firstWhere('charge_type', ChargeType::EarlySettlement->value);
+        $charge = collect($terms['charges'])->firstWhere('behaviour', ChargeBehaviour::EarlySettlement->value);
 
         if (! $charge) {
             return Money::zero();

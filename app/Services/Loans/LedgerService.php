@@ -1,9 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Enums\AllocationComponent;
-use App\Enums\ChargeType;
+use App\Enums\ChargeBehaviour;
 use App\Enums\PaymentChannel;
 use App\Enums\TransactionType;
 use App\Finance\Allocation\AllocationLine;
@@ -13,6 +15,7 @@ use App\Models\LoanAllocation;
 use App\Models\LoanInstallment;
 use App\Models\LoanTransaction;
 use App\Services\Accounting\LoanPostingService;
+use App\Support\Charges\ChargeTypeRegistry;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonInterface;
 use LogicException;
@@ -34,6 +37,7 @@ class LedgerService
 {
     public function __construct(
         protected LoanPostingService $posting,
+        protected ChargeTypeRegistry $chargeTypes,
     ) {}
 
     /**
@@ -50,10 +54,15 @@ class LedgerService
             throw new LogicException("Allocations ({$allocated}) do not add up to the transaction amount ({$amount}).");
         }
 
+        // balance_after = owed before − what this transaction settles. Reversal lines are negative,
+        // so a reversal adds the amount back. Read before any installment is touched.
+        $balanceAfter = LoanBalanceService::owed($loan)->minus($allocated);
+
         $transaction = LoanTransaction::create($attributes + [
             'loan_id' => $loan->id,
             'type' => $type,
             'amount' => (string) $amount,
+            'balance_after' => (string) $balanceAfter,
         ]);
 
         $installments = LoanInstallment::whereIn('id', array_filter(array_map(fn (AllocationLine $l) => $l->reference, $lines)))
@@ -85,9 +94,15 @@ class LedgerService
 
     /**
      * A penalty or charge that becomes owed on an installment.
+     *
+     * @param  ChargeBehaviour|null  $behaviour  Which engine charge this is (late payment, early settlement,
+     *                                           safekeeping); the row is tagged with that system charge type.
      */
-    public function raise(Loan $loan, LoanInstallment $installment, AllocationComponent $component, BigDecimal $amount, CarbonInterface $valueDate, string $narration, bool $isCharity = false, ?ChargeType $chargeType = null, ?string $idempotencyKey = null): LoanTransaction
+    public function raise(Loan $loan, LoanInstallment $installment, AllocationComponent $component, BigDecimal $amount, CarbonInterface $valueDate, string $narration, bool $isCharity = false, ?ChargeBehaviour $behaviour = null, ?string $idempotencyKey = null): LoanTransaction
     {
+        // balance_after = owed before + the new amount (read before the installment is saved).
+        $balanceAfter = LoanBalanceService::owed($loan)->plus($amount);
+
         match ($component) {
             AllocationComponent::Penalty => $installment->penalty_due = (string) Money::of($installment->penalty_due)->plus($amount),
             AllocationComponent::Charge => $installment->charges_due = (string) Money::of($installment->charges_due)->plus($amount),
@@ -100,11 +115,12 @@ class LedgerService
             'loan_id' => $loan->id,
             'type' => $component === AllocationComponent::Penalty ? TransactionType::Penalty : TransactionType::Charge,
             'amount' => (string) $amount,
+            'balance_after' => (string) $balanceAfter,
             'value_date' => $valueDate->toDateString(),
             'channel' => PaymentChannel::System,
             'narration' => "{$narration} (installment {$installment->installment_no})",
             'is_charity' => $isCharity,
-            'charge_type' => $chargeType,
+            'charge_type_id' => $behaviour ? $this->chargeTypes->system($behaviour)->id : null,
             'idempotency_key' => $idempotencyKey,
         ]);
         $this->posting->postTransaction($transaction);

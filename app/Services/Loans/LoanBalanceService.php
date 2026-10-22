@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Enums\AllocationComponent;
@@ -16,6 +18,8 @@ use App\Models\RecoveryCase;
 use App\Models\Setting;
 use App\Models\User;
 use App\Services\Accounting\LoanPostingService;
+use App\Support\BusinessDate;
+use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -40,6 +44,19 @@ class LoanBalanceService
             ->filter(fn (LoanInstallment $i) => $i->unpaidTotal()->isPositive())
             ->sortBy(fn (LoanInstallment $i) => [$i->due_date->timestamp, $i->installment_no])
             ->values();
+    }
+
+    /**
+     * Everything the borrower owes on the schedule in force right now (principal + profit +
+     * charges + penalty, less waivers), read from the database. Used for transactions'
+     * balance_after: the caller adds or subtracts the movement it is about to write.
+     */
+    public static function owed(Loan $loan): BigDecimal
+    {
+        return Money::sum(
+            LoanInstallment::query()->where('loan_id', $loan->id)->current()->get()
+                ->map(fn (LoanInstallment $i) => $i->unpaidTotal())
+        );
     }
 
     /**
@@ -81,7 +98,7 @@ class LoanBalanceService
      */
     public function refresh(Loan $loan, ?CarbonImmutable $businessDate = null): Loan
     {
-        $date = $businessDate ?? CarbonImmutable::today();
+        $date = $businessDate ?? BusinessDate::todayImmutable();
         $installments = $loan->installments()->current()->get();
 
         foreach ($installments as $installment) {
@@ -143,7 +160,7 @@ class LoanBalanceService
         }
 
         $this->workflow->closeLoan($loan, LoanStatus::Settled, $by, $reason === ClosureReason::EarlySettled ? 'Settled early' : 'Fully repaid', $reason);
-        $this->posting->releaseSuspense($loan, CarbonImmutable::today(), 'loan paid off');
+        $this->posting->releaseSuspense($loan, BusinessDate::todayImmutable(), 'loan paid off');
 
         return true;
     }

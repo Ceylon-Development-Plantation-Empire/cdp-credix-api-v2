@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Accounting;
 
 use App\Enums\FinanceBasis;
@@ -174,7 +176,7 @@ class GlReportService
 
         return [
             'branch_id' => $branchId,
-            'as_at' => now()->toIso8601String(),
+            'as_at' => now()->toApiString(),
             'accounts' => $rows,
             'reconciled' => collect($rows)->every(fn (array $r) => $r['difference'] === '0.00'),
         ];

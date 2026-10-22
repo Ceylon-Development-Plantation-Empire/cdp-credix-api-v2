@@ -1,8 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Console\Commands;
 
 use App\Services\Loans\EndOfDayService;
+use App\Support\BusinessDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 
@@ -16,7 +19,7 @@ class RunEndOfDay extends Command
     {
         $date = $this->option('date')
             ? CarbonImmutable::createFromFormat('Y-m-d', $this->option('date'))->startOfDay()
-            : CarbonImmutable::today();
+            : BusinessDate::todayImmutable();
 
         if ($date->isFuture()) {
             $this->error('The business date cannot be in the future.');

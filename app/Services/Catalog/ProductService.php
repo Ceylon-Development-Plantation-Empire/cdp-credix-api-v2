@@ -1,11 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Catalog;
 
 use App\Enums\ApprovalAction;
 use App\Enums\ChargeCollection;
-use App\Enums\ChargeType;
-use App\Enums\CollateralType;
 use App\Enums\PricingMethod;
 use App\Enums\ProductStatus;
 use App\Enums\RepaymentFrequency;
@@ -14,10 +14,14 @@ use App\Finance\Charges\ChargeCalculator;
 use App\Finance\Schedule\LoanTerms;
 use App\Finance\Support\Money;
 use App\Models\ApprovalRequest;
+use App\Models\ChargeType;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\User;
 use App\Services\Approvals\ApprovalRequestService;
+use App\Support\BusinessDate;
+use App\Support\Charges\ChargeTypeRegistry;
+use App\Support\Collateral\CollateralTypes;
 use BackedEnum;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
@@ -303,7 +307,7 @@ class ProductService
             annualRate: $rate,
             tenure: $tenure,
             frequency: $product->repayment_frequency,
-            startDate: CarbonImmutable::parse($input['start_date'] ?? now()->toDateString()),
+            startDate: CarbonImmutable::parse($input['start_date'] ?? BusinessDate::today()->toDateString()),
             firstDueDate: isset($input['first_due_date']) ? CarbonImmutable::parse($input['first_due_date']) : null,
             residualValue: $residual,
         );
@@ -321,6 +325,8 @@ class ProductService
             'tenure' => $tenure,
             'repayment_frequency' => $product->repayment_frequency->value,
             'upfront_charges' => $upfront,
+            // Additive: one line per display group ("Service charges") with its itemised breakdown.
+            'charge_breakdown' => $this->chargeBreakdown($upfront),
             'net_disbursement_amount' => (string) $amount->minus($deducted),
             'schedule' => $schedule->toArray(),
         ];
@@ -329,7 +335,10 @@ class ProductService
     /**
      * Charges collected at the start, and the part of them taken out of the payout.
      *
-     * @return array{0: list<array<string, string>>, 1: BigDecimal}
+     * Each line carries the charge type's name and display group (additive fields), so the quote can
+     * show one combined line per group with the breakdown underneath.
+     *
+     * @return array{0: list<array{charge_type: string, name: string, display_group: string, collection: string, amount: string}>, 1: BigDecimal}
      */
     protected function upfrontCharges(Product $product, BigDecimal $amount): array
     {
@@ -337,7 +346,9 @@ class ProductService
         $deducted = Money::zero();
 
         foreach ($product->charges()->where('is_active', true)->get() as $charge) {
-            if ($charge->charge_type->isEventCharge()) {
+            $type = $charge->type();
+
+            if ($type->behaviour->isEventDriven()) {
                 continue;
             }
 
@@ -348,13 +359,34 @@ class ProductService
             }
 
             $lines[] = [
-                'charge_type' => $charge->charge_type->value,
+                'charge_type' => $type->code,
+                'name' => $type->name,
+                'display_group' => $type->display_group,
                 'collection' => $charge->collection->value,
                 'amount' => (string) $value,
             ];
         }
 
         return [$lines, $deducted];
+    }
+
+    /**
+     * Upfront charge lines grouped by display group: [{group, total, items: [{charge_type, name, amount}]}].
+     *
+     * @param  list<array{charge_type: string, name: string, display_group: string, collection: string, amount: string}>  $lines
+     * @return list<array{group: string, total: string, items: list<array{charge_type: string, name: string, amount: string}>}>
+     */
+    protected function chargeBreakdown(array $lines): array
+    {
+        $groups = [];
+
+        foreach ($lines as $line) {
+            $groups[$line['display_group']] ??= ['group' => $line['display_group'], 'total' => Money::zero(), 'items' => []];
+            $groups[$line['display_group']]['total'] = $groups[$line['display_group']]['total']->plus($line['amount']);
+            $groups[$line['display_group']]['items'][] = ['charge_type' => $line['charge_type'], 'name' => $line['name'], 'amount' => $line['amount']];
+        }
+
+        return array_values(array_map(fn (array $g) => [...$g, 'total' => (string) $g['total']], $groups));
     }
 
     /**
@@ -571,13 +603,21 @@ class ProductService
                 'residual_value' => $method->supportsResidualValue(),
             ], PricingMethod::cases()),
             'repayment_frequencies' => array_map(fn (RepaymentFrequency $f) => $f->value, RepaymentFrequency::cases()),
-            'charge_types' => array_map(fn (ChargeType $type) => [
-                'value' => $type->value,
-                'calculations' => array_map(fn ($c) => $c->value, $type->allowedCalculations()),
-                'collections' => array_map(fn ($c) => $c->value, $type->allowedCollections()),
-                'recurrences' => array_map(fn ($r) => $r->value, $type->allowedRecurrences()),
-            ], ChargeType::cases()),
-            'collateral_types' => array_map(fn (CollateralType $type) => ['value' => $type->value, 'label' => $type->label()], CollateralType::cases()),
+            // Same shape as before (value, calculations, collections, recurrences), now read from the
+            // charge_types table; name / display_group / behaviour are additive.
+            'charge_types' => app(ChargeTypeRegistry::class)->all()
+                ->filter(fn (ChargeType $type) => $type->is_active)
+                ->map(fn (ChargeType $type) => [
+                    'value' => $type->code,
+                    'name' => $type->name,
+                    'display_group' => $type->display_group,
+                    'behaviour' => $type->behaviour->value,
+                    'calculations' => $type->allowed_calculations,
+                    'collections' => array_map(fn ($c) => $c->value, $type->behaviour->allowedCollections()),
+                    'recurrences' => $type->allowed_recurrences,
+                ])->values()->all(),
+            // Same shape as before (value, label), now read from the collateral_type lookup list.
+            'collateral_types' => array_map(fn (array $type) => ['value' => $type['code'], 'label' => $type['label']], app(CollateralTypes::class)->selectable()),
         ];
     }
 }

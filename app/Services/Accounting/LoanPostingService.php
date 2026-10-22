@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Accounting;
 
 use App\Enums\AllocationComponent;
@@ -16,6 +18,7 @@ use App\Models\Loan;
 use App\Models\LoanInstallment;
 use App\Models\LoanTransaction;
 use App\Models\Setting;
+use App\Support\BusinessDate;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -204,7 +207,7 @@ class LoanPostingService
             return null;
         }
 
-        return $this->gl->write(GlJournalSource::Restructure, CarbonImmutable::today(), "Restructured to schedule version {$version} - {$loan->loan_no}", $lines, [
+        return $this->gl->write(GlJournalSource::Restructure, BusinessDate::todayImmutable(), "Restructured to schedule version {$version} - {$loan->loan_no}", $lines, [
             'source_key' => "restructure:{$loan->id}:{$version}",
             'branch_id' => $loan->branch_id,
             'loan_id' => $loan->id,

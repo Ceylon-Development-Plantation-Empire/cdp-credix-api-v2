@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Enums\LoanStatus;
@@ -9,7 +11,7 @@ use App\Exceptions\BusinessRuleException;
 use App\Models\Customer;
 use App\Models\LoanParty;
 use App\Models\Setting;
-use Carbon\CarbonImmutable;
+use App\Support\BusinessDate;
 
 /**
  * Can this person borrow, or guarantee? Each check returns a problem with a stable code, so the
@@ -154,7 +156,7 @@ class EligibilityService
      */
     protected function ageAtMaturity(Customer $customer, int $tenure, RepaymentFrequency $frequency): int
     {
-        $today = CarbonImmutable::today();
+        $today = BusinessDate::todayImmutable();
 
         $maturity = match ($frequency) {
             RepaymentFrequency::Monthly, RepaymentFrequency::Bullet => $today->addMonthsNoOverflow($tenure),

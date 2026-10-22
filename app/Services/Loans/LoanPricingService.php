@@ -1,10 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
+use App\Enums\ChargeBehaviour;
 use App\Enums\ChargeCalculation;
 use App\Enums\ChargeCollection;
-use App\Enums\ChargeType;
 use App\Finance\Charges\ChargeCalculator;
 use App\Finance\Schedule\LoanTerms;
 use App\Finance\Support\Money;
@@ -12,6 +14,7 @@ use App\Models\Loan;
 use App\Models\Product;
 use App\Models\ProductCharge;
 use App\Models\ProductCollateralRule;
+use App\Support\BusinessDate;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
 
@@ -58,8 +61,13 @@ class LoanPricingService
             'residual_value_percent' => $product->residual_value_percent !== null ? (string) $product->residual_value_percent : null,
             'early_settlement_allowed' => $product->early_settlement_allowed,
             'early_settlement_rebate_percent' => $product->early_settlement_rebate_percent !== null ? (string) $product->early_settlement_rebate_percent : null,
+            // DECISION: the charge's name, display group and behaviour are frozen with the terms, so a
+            // fee renamed or regrouped later never changes what an existing loan shows or charges.
             'charges' => $product->charges->where('is_active', true)->map(fn (ProductCharge $charge) => [
-                'charge_type' => $charge->charge_type->value,
+                'charge_type' => $charge->type()->code,
+                'name' => $charge->type()->name,
+                'display_group' => $charge->type()->display_group,
+                'behaviour' => $charge->type()->behaviour->value,
                 'calculation' => $charge->calculation->value,
                 'value' => (string) $charge->value,
                 'min_amount' => $charge->min_amount !== null ? (string) $charge->min_amount : null,
@@ -69,11 +77,11 @@ class LoanPricingService
                 'is_charity' => $charge->is_charity,
             ])->values()->all(),
             'collateral_rules' => $product->collateralRules->map(fn (ProductCollateralRule $rule) => [
-                'collateral_type' => $rule->collateral_type->value,
+                'collateral_type' => $rule->collateral_type,
                 'max_ltv_percent' => (string) $rule->max_ltv_percent,
                 'is_mandatory' => $rule->is_mandatory,
             ])->values()->all(),
-            'captured_at' => now()->toIso8601String(),
+            'captured_at' => now()->toApiString(),
         ];
     }
 
@@ -98,7 +106,7 @@ class LoanPricingService
             annualRate: $rate,
             tenure: $loan->tenure,
             frequency: $loan->repayment_frequency,
-            startDate: $startDate ?? CarbonImmutable::today(),
+            startDate: $startDate ?? BusinessDate::todayImmutable(),
             firstDueDate: $firstDueDate,
             residualValue: $residual,
         );
@@ -114,7 +122,7 @@ class LoanPricingService
      * Charges taken at the start (event charges such as late payment are raised later).
      *
      * @param  list<array<string, mixed>>  $charges
-     * @return array{0: list<array{charge_type: string, collection: string, amount: string}>, 1: BigDecimal, 2: BigDecimal}
+     * @return array{0: list<array{charge_type: string, name: string, display_group: string, collection: string, amount: string}>, 1: BigDecimal, 2: BigDecimal}
      */
     protected function upfrontCharges(array $charges, BigDecimal $amount): array
     {
@@ -123,7 +131,7 @@ class LoanPricingService
         $firstInstallment = Money::zero();
 
         foreach ($charges as $charge) {
-            if (ChargeType::from($charge['charge_type'])->isEventCharge()) {
+            if (ChargeBehaviour::from($charge['behaviour'])->isEventDriven()) {
                 continue;
             }
 
@@ -143,6 +151,8 @@ class LoanPricingService
 
             $lines[] = [
                 'charge_type' => $charge['charge_type'],
+                'name' => $charge['name'],
+                'display_group' => $charge['display_group'],
                 'collection' => $charge['collection'],
                 'amount' => (string) $value,
             ];

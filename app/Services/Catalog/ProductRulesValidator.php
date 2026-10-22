@@ -1,14 +1,17 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Catalog;
 
+use App\Enums\ChargeBehaviour;
 use App\Enums\ChargeCalculation;
-use App\Enums\ChargeType;
-use App\Enums\CollateralType;
 use App\Enums\FinanceBasis;
 use App\Enums\PricingMethod;
 use App\Enums\RepaymentFrequency;
 use App\Exceptions\BusinessRuleException;
+use App\Support\Charges\ChargeTypeRegistry;
+use App\Support\Collateral\CollateralTypes;
 use BackedEnum;
 use Brick\Math\BigDecimal;
 
@@ -23,6 +26,10 @@ use Brick\Math\BigDecimal;
  */
 class ProductRulesValidator
 {
+    public function __construct(
+        protected ChargeTypeRegistry $chargeTypes,
+    ) {}
+
     /**
      * @param  array<string, mixed>  $terms  Product attributes (enums or their values).
      * @param  list<array<string, mixed>>  $charges
@@ -53,23 +60,23 @@ class ProductRulesValidator
     {
         $errors = [];
         $method = PricingMethod::from($this->value($terms['pricing_method']));
-        $types = array_map(fn ($rule) => $this->value($rule['collateral_type']), $collateralRules);
-
         if ($terms['requires_collateral'] && ! $collateralRules) {
             $errors[] = 'A product that requires collateral needs at least one collateral rule.';
         }
 
         if ($method->isBullet()) {
-            $gold = collect($collateralRules)->first(fn ($rule) => $this->value($rule['collateral_type']) === CollateralType::Gold->value);
+            // The engine values, renews and charges safekeeping on gold by weight, so a gold loan must
+            // be secured by a type valued by gold weight.
+            $goldCodes = app(CollateralTypes::class)->goldCodes();
+            $gold = collect($collateralRules)->first(fn ($rule) => in_array($this->value($rule['collateral_type']), $goldCodes, true));
 
             if (! $gold || ! $gold['is_mandatory']) {
                 $errors[] = 'A gold product needs a mandatory gold collateral rule.';
             }
         }
 
-        if ($types && ! $terms['requires_collateral']) {
-            $errors[] = 'Collateral rules are set but the product does not require collateral.';
-        }
+        // DECISION: collateral is optional unless the product says otherwise. A product that does not
+        // require collateral may still list the types (and so the lending-margin plans) it accepts.
 
         if ($errors) {
             throw new BusinessRuleException('PRODUCT_NOT_READY', 'The product cannot be activated yet.', 422, ['errors' => $errors]);
@@ -159,25 +166,38 @@ class ProductRulesValidator
         $seen = [];
 
         foreach ($charges as $charge) {
-            $type = ChargeType::from($this->value($charge['charge_type']));
-            $calculation = ChargeCalculation::from($this->value($charge['calculation']));
-            $name = str_replace('_', ' ', $type->value);
+            $code = $this->value($charge['charge_type']);
+            $type = $this->chargeTypes->find($code);
 
-            if (isset($seen[$type->value])) {
+            if ($type === null) {
+                $errors[] = "The charge type {$code} does not exist.";
+
+                continue;
+            }
+
+            $behaviour = $type->behaviour;
+            $calculation = ChargeCalculation::from($this->value($charge['calculation']));
+            $name = str_replace('_', ' ', $type->code);
+
+            if (isset($seen[$type->code])) {
                 $errors[] = "The {$name} is set more than once.";
             }
-            $seen[$type->value] = true;
+            $seen[$type->code] = true;
 
-            if (! in_array($calculation, $type->allowedCalculations(), true)) {
+            // The type's own lists (data), never wider than what its behaviour supports (code).
+            if (! in_array($calculation->value, $type->allowed_calculations, true)
+                || ! in_array($calculation, $behaviour->permittedCalculations(), true)) {
                 $errors[] = "The {$name} cannot be calculated as {$calculation->value}.";
             }
 
-            if (! in_array($this->value($charge['collection']), array_map(fn ($c) => $c->value, $type->allowedCollections()), true)) {
+            if (! in_array($this->value($charge['collection']), array_map(fn ($c) => $c->value, $behaviour->allowedCollections()), true)) {
                 $errors[] = "The {$name} cannot be collected as {$this->value($charge['collection'])}.";
             }
 
-            if (! in_array($this->value($charge['recurrence'] ?? 'once'), array_map(fn ($r) => $r->value, $type->allowedRecurrences()), true)) {
-                $errors[] = "The {$name} cannot recur as {$this->value($charge['recurrence'])}.";
+            $recurrence = $this->value($charge['recurrence'] ?? 'once');
+            if (! in_array($recurrence, $type->allowed_recurrences, true)
+                || ! in_array($recurrence, array_map(fn ($r) => $r->value, $behaviour->permittedRecurrences()), true)) {
+                $errors[] = "The {$name} cannot recur as {$recurrence}.";
             }
 
             if ($calculation->isPercentage() && BigDecimal::of($charge['value'])->isGreaterThan(100)) {
@@ -189,13 +209,13 @@ class ProductRulesValidator
             }
 
             // Islamic late payment charges are given to charity; a conventional penalty is income.
-            if ($type === ChargeType::LatePayment && (bool) ($charge['is_charity'] ?? false) !== ($basis === FinanceBasis::Islamic)) {
+            if ($behaviour === ChargeBehaviour::LatePayment && (bool) ($charge['is_charity'] ?? false) !== ($basis === FinanceBasis::Islamic)) {
                 $errors[] = $basis === FinanceBasis::Islamic
                     ? 'An Islamic late payment charge must go to charity (is_charity = true).'
                     : 'A conventional late payment charge cannot be marked as charity.';
             }
 
-            if ($type !== ChargeType::LatePayment && ($charge['is_charity'] ?? false)) {
+            if ($behaviour !== ChargeBehaviour::LatePayment && ($charge['is_charity'] ?? false)) {
                 $errors[] = "Only the late payment charge can go to charity, not the {$name}.";
             }
 
@@ -204,7 +224,7 @@ class ProductRulesValidator
                 $errors[] = "On a {$method->label()} the {$name} must be a fixed actual-cost amount, not a percentage of the loan.";
             }
 
-            if ($type === ChargeType::SafekeepingFee && ! $method->isBullet()) {
+            if ($behaviour === ChargeBehaviour::Safekeeping && ! $method->isBullet()) {
                 $errors[] = 'A safekeeping fee only applies to gold products.';
             }
         }

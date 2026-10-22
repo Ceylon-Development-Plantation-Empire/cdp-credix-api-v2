@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Reports;
 
 use App\Enums\ApprovalStatus;
@@ -11,6 +13,7 @@ use App\Models\Branch;
 use App\Models\Loan;
 use App\Models\LoanTransaction;
 use App\Models\RecoveryCase;
+use App\Support\BusinessDate;
 use Brick\Math\RoundingMode;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -212,8 +215,8 @@ class ReportService
         $trend = [];
 
         for ($i = $months - 1; $i >= 0; $i--) {
-            $start = today()->startOfMonth()->subMonthsNoOverflow($i);
-            $period = ['from' => $start->toDateString(), 'to' => $start->copy()->endOfMonth()->min(today())->toDateString()] + $filters;
+            $start = BusinessDate::today()->startOfMonth()->subMonthsNoOverflow($i);
+            $period = ['from' => $start->toDateString(), 'to' => $start->copy()->endOfMonth()->min(BusinessDate::today())->toDateString()] + $filters;
 
             $trend[] = [
                 'month' => $start->format('Y-m'),
@@ -240,7 +243,7 @@ class ReportService
             DB::raw('SUM(CASE WHEN loans.days_past_due > 30 THEN loans.outstanding_principal ELSE 0 END) as par30_principal'),
         ]);
 
-        $month = ['from' => today()->startOfMonth()->toDateString(), 'to' => today()->toDateString()] + $filters;
+        $month = ['from' => BusinessDate::today()->startOfMonth()->toDateString(), 'to' => BusinessDate::today()->toDateString()] + $filters;
         $pipeline = [LoanStatus::Submitted, LoanStatus::InReview, LoanStatus::Returned, LoanStatus::Verified, LoanStatus::Approved, LoanStatus::Accepted];
 
         $applications = Loan::topLevel()

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Groups;
 
 use App\Enums\BorrowerGroupStatus;
@@ -12,6 +14,7 @@ use App\Models\Customer;
 use App\Models\Loan;
 use App\Models\User;
 use App\Support\BranchAccess;
+use App\Support\BusinessDate;
 use App\Traits\ActivityLogTrait;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -88,7 +91,7 @@ class BorrowerGroupService
                 $member = $group->members()->create([
                     'customer_id' => $customer->id,
                     'role' => $role,
-                    'joined_on' => now()->toDateString(),
+                    'joined_on' => BusinessDate::today()->toDateString(),
                 ]);
             } catch (UniqueConstraintViolationException) {
                 // Another request added the same person to a group a moment ago.
@@ -129,7 +132,7 @@ class BorrowerGroupService
             $this->assertMembershipCanChange($group);
 
             // The row stays as history; left_on frees the person to join another group.
-            $member->update(['left_on' => now()->toDateString()]);
+            $member->update(['left_on' => BusinessDate::today()->toDateString()]);
 
             $this->logActivity('REMOVE_MEMBER', 'BorrowerGroup', "Member left {$group->group_no}", ['member_id' => $member->id, 'by' => $user->id]);
 
@@ -167,7 +170,7 @@ class BorrowerGroupService
     {
         $this->assertMembershipCanChange($group);
 
-        $group->currentMembers()->update(['left_on' => now()->toDateString()]);
+        $group->currentMembers()->update(['left_on' => BusinessDate::today()->toDateString()]);
     }
 
     /**

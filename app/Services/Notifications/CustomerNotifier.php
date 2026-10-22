@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Notifications;
 
 use App\Enums\LoanStatus;
@@ -43,7 +45,8 @@ class CustomerNotifier
 
         $loan = Loan::withoutGlobalScope('branch')->find($event->loan->id);
         $loans = $loan->isGroupFacility()
-            ? $loan->memberLoans()->withoutGlobalScope('branch')->where('status', $event->to->value)->get()
+            // Eager-load the product: every member's message resolves its template from it (no N+1).
+            ? $loan->memberLoans()->withoutGlobalScope('branch')->with('product')->where('status', $event->to->value)->get()
             : collect([$loan]);
 
         foreach ($loans as $each) {

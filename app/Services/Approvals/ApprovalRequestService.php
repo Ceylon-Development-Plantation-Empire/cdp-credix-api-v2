@@ -1,11 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Approvals;
 
 use App\Enums\ApprovalAction;
 use App\Enums\ApprovalStatus;
 use App\Exceptions\BusinessRuleException;
 use App\Models\ApprovalRequest;
+use App\Models\GlJournal;
+use App\Models\Loan;
+use App\Models\LoanTransaction;
 use App\Models\User;
 use App\Services\Accounting\Approvals\ManualJournalHandler;
 use App\Services\Approvals\Contracts\ApprovalHandler;
@@ -55,8 +60,7 @@ class ApprovalRequestService
         $request = ApprovalRequest::create([
             'subject_type' => $subject->getMorphClass(),
             'subject_id' => $subject->getKey(),
-            // Loans carry their branch; a payment takes its loan's. Products have none (head office).
-            'branch_id' => $subject->getAttribute('branch_id') ?? $subject->loan?->branch_id,
+            'branch_id' => $this->branchOf($subject),
             'action' => $action,
             'payload' => $payload,
             'reason' => $reason,
@@ -69,6 +73,19 @@ class ApprovalRequestService
         ]);
 
         return $request;
+    }
+
+    /**
+     * The branch whose staff see the request in their inbox: a loan's or journal's own branch, a
+     * payment's loan branch; products are head-office subjects (null).
+     */
+    protected function branchOf(Model $subject): ?int
+    {
+        return match (true) {
+            $subject instanceof Loan, $subject instanceof GlJournal => $subject->branch_id,
+            $subject instanceof LoanTransaction => $subject->loan()->withoutGlobalScope('branch')->value('branch_id'),
+            default => null,
+        };
     }
 
     /**
@@ -121,7 +138,7 @@ class ApprovalRequestService
             ])->save();
 
             return $request;
-        });
+        }, attempts: 3);
     }
 
     protected function decide(ApprovalRequest $request, User $approver, ApprovalStatus $decision, ?string $reference, ?string $remarks): ApprovalRequest
@@ -167,7 +184,7 @@ class ApprovalRequestService
             ]);
 
             return $request;
-        });
+        }, attempts: 3);
     }
 
     protected function assertPending(ApprovalRequest $request): void

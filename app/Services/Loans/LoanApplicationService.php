@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Enums\BorrowerGroupStatus;
@@ -86,7 +88,7 @@ class LoanApplicationService
 
             $before = [(string) Money::of($loan->requested_amount), $loan->tenure];
 
-            $loan->fill(array_intersect_key($data, array_flip(['purpose'])) + ['tenure' => $tenure, 'updated_by' => $user->id]);
+            $loan->fill(array_intersect_key($data, array_flip(['purpose', 'meta'])) + ['tenure' => $tenure, 'updated_by' => $user->id]);
 
             if ($loan->isGroupFacility()) {
                 if (array_key_exists('members', $data)) {
@@ -253,6 +255,7 @@ class LoanApplicationService
             'requested_amount' => $data['requested_amount'],
             'tenure' => $tenure,
             'purpose' => $data['purpose'] ?? null,
+            'meta' => $data['meta'] ?? null,
         ], $user);
 
         $loan->parties()->create(['customer_id' => $borrower->id, 'role' => PartyRole::Borrower]);
@@ -292,6 +295,7 @@ class LoanApplicationService
             'requested_amount' => '0',
             'tenure' => $tenure,
             'purpose' => $data['purpose'] ?? null,
+            'meta' => $data['meta'] ?? null,
         ], $user);
 
         $this->syncMembers($facility, $data['members'], $user);

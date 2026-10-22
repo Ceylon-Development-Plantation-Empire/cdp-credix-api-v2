@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Enums\BorrowerType;
@@ -73,7 +75,7 @@ class EndOfDayService
                                 foreach ($loan->borrowingParties()->with('customer')->get() as $party) {
                                     $this->creditScores->recompute($party->customer, $businessDate);
                                 }
-                            });
+                            }, attempts: 3);
                             $result['loans']++;
                         } catch (\Throwable $th) {
                             $result['failed']++;

@@ -1,18 +1,22 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Enums\AllocationComponent;
+use App\Enums\ChargeBehaviour;
 use App\Enums\ChargeCalculation;
-use App\Enums\ChargeType;
 use App\Enums\CollateralStatus;
-use App\Enums\CollateralType;
 use App\Enums\LoanStatus;
 use App\Finance\Collateral\GoldValuation;
 use App\Finance\Support\Money;
 use App\Models\Loan;
 use App\Models\LoanInstallment;
 use App\Models\LoanTransaction;
+use App\Support\BusinessDate;
+use App\Support\Charges\ChargeTypeRegistry;
+use App\Support\Collateral\CollateralTypes;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
 
@@ -36,6 +40,7 @@ class SafekeepingFeeService
         protected LoanPricingService $pricing,
         protected LedgerService $ledger,
         protected GoldValuation $gold,
+        protected ChargeTypeRegistry $chargeTypes,
     ) {}
 
     /**
@@ -45,13 +50,13 @@ class SafekeepingFeeService
      */
     public function apply(Loan $loan, CarbonImmutable $date): int
     {
-        $rule = collect($this->pricing->termsOf($loan)['charges'] ?? [])->firstWhere('charge_type', ChargeType::SafekeepingFee->value);
+        $rule = collect($this->pricing->termsOf($loan)['charges'] ?? [])->firstWhere('behaviour', ChargeBehaviour::Safekeeping->value);
 
         if (! $rule || $loan->status !== LoanStatus::Active) {
             return 0;
         }
 
-        $start = CarbonImmutable::parse($loan->schedule_starts_on ?? $loan->disbursed_at)->startOfDay();
+        $start = BusinessDate::of($loan->schedule_starts_on ?? $loan->disbursed_at);
 
         if ($date->lessThan($start)) {
             return 0;
@@ -69,14 +74,14 @@ class SafekeepingFeeService
         // Each month of this schedule has its own key, so months of an earlier term never count.
         $keys = collect(range(1, $started))->mapWithKeys(fn (int $month) => [$month => hash('sha256', "safekeeping|{$loan->id}|{$start->toDateString()}|{$month}")]);
         $charged = LoanTransaction::where('loan_id', $loan->id)
-            ->where('charge_type', ChargeType::SafekeepingFee->value)
+            ->where('charge_type_id', $this->chargeTypes->system(ChargeBehaviour::Safekeeping)->id)
             ->whereIn('idempotency_key', $keys->values())
             ->pluck('idempotency_key');
         $raised = 0;
 
         foreach ($keys->diff($charged) as $month => $key) {
             /** @var LoanInstallment $line */
-            $this->ledger->raise($loan, $line, AllocationComponent::Charge, $fee, $start->addMonths($month - 1), "Safekeeping fee, month {$month}", false, ChargeType::SafekeepingFee, $key);
+            $this->ledger->raise($loan, $line, AllocationComponent::Charge, $fee, $start->addMonths($month - 1), "Safekeeping fee, month {$month}", false, ChargeBehaviour::Safekeeping, $key);
             $raised++;
         }
 
@@ -110,7 +115,7 @@ class SafekeepingFeeService
     protected function netWeight(Loan $loan): BigDecimal
     {
         return $loan->collaterals()
-            ->where('type', CollateralType::Gold->value)
+            ->whereIn('collateral_type_id', app(CollateralTypes::class)->goldIds())
             ->where('status', CollateralStatus::Perfected->value)
             ->get()
             ->reduce(fn (BigDecimal $sum, $c) => $sum->plus(BigDecimal::of((string) ($c->details['net_weight_g'] ?? '0'))), BigDecimal::zero());

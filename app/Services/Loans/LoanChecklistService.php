@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Enums\CollateralStatus;
@@ -55,7 +57,7 @@ class LoanChecklistService
 
                 return [
                     'public_id' => $collateral->public_id,
-                    'type' => $collateral->type->value,
+                    'type' => $collateral->type,
                     'missing_documents' => $missing,
                     'complete' => $missing === [],
                 ];

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Enums\BorrowerType;
@@ -9,6 +11,7 @@ use App\Finance\Support\Money;
 use App\Models\CustomerFinancial;
 use App\Models\Loan;
 use App\Models\Setting;
+use App\Support\BusinessDate;
 use Brick\Math\BigDecimal;
 
 /**
@@ -51,7 +54,7 @@ class AffordabilityService
 
         $financials = CustomerFinancial::query()
             ->whereIn('customer_id', $loan->borrowingParties()->pluck('customer_id'))
-            ->where(fn ($q) => $q->whereNull('end_date')->orWhere('end_date', '>=', today()))
+            ->where(fn ($q) => $q->whereNull('end_date')->orWhere('end_date', '>=', BusinessDate::today()))
             ->get();
 
         $income = Money::sum($financials

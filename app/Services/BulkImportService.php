@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services;
 
 use App\Models\Branch;
@@ -14,6 +16,7 @@ use App\Models\User;
 use App\Models\Zonal;
 use App\Traits\ActivityLogTrait;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -395,7 +398,7 @@ class BulkImportService
                 [$uniqueKeyField => $filteredData[$uniqueKeyField]],
                 $filteredData
             );
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             if ($e->getCode() === '23000') {
                 throw new \Exception('Database foreign key integrity constraint violation. Please check that referenced parent IDs exist.');
             }

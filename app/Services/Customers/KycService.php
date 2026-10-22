@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Customers;
 
 use App\Enums\KycStatus;
@@ -99,7 +101,7 @@ class KycService
      */
     protected function message(Customer $customer): string
     {
-        $id = substr($customer->id_number_normalized, -4);
+        $id = substr((string) $customer->normalizedIdNumber(), -4);
 
         return "CDP Capital: :code is your code to confirm your details (customer {$customer->customer_no}, ID ending {$id}) for KYC. "
             .'Valid :minutes minutes. Never share this code with anyone. If you did not request it, call your branch.';

@@ -1,8 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Console\Commands;
 
 use App\Services\Accounting\ProvisionService;
+use App\Support\BusinessDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 
@@ -17,7 +20,7 @@ class PostProvisions extends Command
 
     public function handle(ProvisionService $provisions): int
     {
-        $date = CarbonImmutable::parse($this->option('date') ?? today()->toDateString());
+        $date = CarbonImmutable::parse($this->option('date') ?? BusinessDate::today()->toDateString());
 
         if ($date->isFuture()) {
             $this->error('The reporting date cannot be in the future.');

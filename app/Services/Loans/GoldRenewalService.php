@@ -1,11 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Enums\AllocationComponent;
 use App\Enums\ApprovalAction;
 use App\Enums\CollateralStatus;
-use App\Enums\CollateralType;
 use App\Enums\InstallmentStatus;
 use App\Enums\LoanActivityType;
 use App\Enums\LoanStatus;
@@ -25,6 +26,9 @@ use App\Models\LoanInstallment;
 use App\Models\LoanTransaction;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\BusinessDate;
+use App\Support\Collateral\CollateralTypes;
+use App\Support\Idempotency;
 use App\Traits\ActivityLogTrait;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
@@ -70,7 +74,7 @@ class GoldRenewalService
      */
     public function quote(Loan $loan, ?int $tenure = null): array
     {
-        $q = $this->compute($loan, CarbonImmutable::today(), $tenure);
+        $q = $this->compute($loan, BusinessDate::todayImmutable(), $tenure);
 
         return [
             'renewal_no' => $loan->renewal_count + 1,
@@ -95,18 +99,18 @@ class GoldRenewalService
     {
         $keyHash = hash('sha256', "renewal|{$loan->id}|{$idempotencyKey}");
 
-        if ($existing = LoanTransaction::where('idempotency_key', $keyHash)->first()) {
+        if ($existing = Idempotency::replay($keyHash, $data['amount'])) {
             return $existing;
         }
 
         return DB::transaction(function () use ($loan, $data, $keyHash, $by) {
             $loan = $this->workflow->lock($loan);
 
-            if ($existing = LoanTransaction::where('idempotency_key', $keyHash)->first()) {
+            if ($existing = Idempotency::replay($keyHash, $data['amount'])) {
                 return $existing;
             }
 
-            $today = CarbonImmutable::today();
+            $today = BusinessDate::todayImmutable();
             $this->safekeeping->apply($loan, $today);
             $q = $this->compute($loan, $today, isset($data['tenure']) ? (int) $data['tenure'] : null);
             $principalPayment = Money::of($data['principal_payment'] ?? '0');
@@ -170,7 +174,7 @@ class GoldRenewalService
             PaymentPosted::dispatch($transaction);
 
             return $transaction;
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -188,7 +192,7 @@ class GoldRenewalService
         $profitPaid = Money::sum($lines->pluck('profit_paid'));
 
         // Interest for the days used, capped at what the term carries; less what was already paid.
-        $from = CarbonImmutable::parse($loan->schedule_starts_on ?? $loan->disbursed_at)->startOfDay();
+        $from = BusinessDate::of($loan->schedule_starts_on ?? $loan->disbursed_at);
         $accrued = GoldPawn::accruedInterest($principal, $loan->rate, $from, $today);
         $payable = Money::max(Money::min($accrued, $profitDue)->minus($profitPaid), Money::zero());
 
@@ -242,7 +246,7 @@ class GoldRenewalService
      */
     protected function gold(Loan $loan): Collection
     {
-        return $loan->collaterals()->where('type', CollateralType::Gold->value)->where('status', CollateralStatus::Perfected->value)->get();
+        return $loan->collaterals()->whereIn('collateral_type_id', app(CollateralTypes::class)->goldIds())->where('status', CollateralStatus::Perfected->value)->get();
     }
 
     /**

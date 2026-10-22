@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Enums\AllocationComponent;
@@ -19,6 +21,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Services\Accounting\LoanPostingService;
 use App\Services\Approvals\ApprovalRequestService;
+use App\Support\BusinessDate;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
 
@@ -70,7 +73,7 @@ class RestructureService
         $loan = $this->workflow->lock($loan);
         $this->assertRestructurable($loan, $payload);
 
-        $today = CarbonImmutable::today();
+        $today = BusinessDate::todayImmutable();
         $unpaid = $this->balances->unpaidInstallments($loan);
         $sum = fn (AllocationComponent $c, ?callable $filter = null) => Money::sum(($filter ? $unpaid->filter($filter) : $unpaid)->map(fn (LoanInstallment $i) => $i->unpaid($c)));
 

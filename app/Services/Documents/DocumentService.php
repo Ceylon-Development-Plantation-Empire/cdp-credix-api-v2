@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Documents;
 
 use App\Enums\DocumentStatus;
@@ -13,7 +15,9 @@ use App\Models\DocumentType;
 use App\Models\Loan;
 use App\Models\User;
 use App\Traits\ActivityLogTrait;
+use App\Traits\FileUploadTrait;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -22,16 +26,20 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 /**
  * Uploads, review and download of documents.
  *
- * Fixes for the old system's file handling:
- * - files go to the private disk, never under public/, so there is no URL to guess;
- * - the stored name is random and the extension comes from the detected content type,
- *   never from the client's file name;
- * - the file type is checked from its content (finfo), so a script renamed to .pdf is refused;
- * - downloads go through an authorised endpoint by document id, never by a client-supplied path.
+ * Every file is stored by the senior's FileUploadTrait (private disk, uploads/<module>/<name>),
+ * never with a hand-written Storage call. Around it, this service enforces what the trait leaves
+ * to its caller:
+ * - SECURITY: the file type is checked from its content (finfo), so a script renamed to .pdf is
+ *   refused; and the client's extension must match that content type, because the trait names
+ *   the stored file with the client's extension;
+ * - SECURITY: the stored name is a random ULID (the trait's "prefix"), never the client's name;
+ * - the size limit and allowed formats of the chosen document type;
+ * - files live on the private disk, never under public/: there is no URL to guess; downloads go
+ *   through an authorised endpoint by document id, never by a client-supplied path.
  */
 class DocumentService
 {
-    use ActivityLogTrait;
+    use ActivityLogTrait, FileUploadTrait;
 
     public const DISK = 'private';
 
@@ -46,10 +54,19 @@ class DocumentService
     ];
 
     /**
+     * Store an uploaded file for a customer, loan or collateral item and record it (pending review).
+     *
+     * @param  Request  $request  The upload request (the senior's trait reads the file from it).
+     * @param  string  $field  The form field holding the file.
      * @param  array{issued_on?: string|null, expires_on?: string|null, remarks?: string|null}  $meta
+     *
+     * @throws BusinessRuleException DOCUMENT_* when the file or its type is not acceptable.
      */
-    public function upload(Model $owner, DocumentType $type, UploadedFile $file, array $meta, User $user): Document
+    public function upload(Model $owner, DocumentType $type, Request $request, string $field, array $meta, User $user): Document
     {
+        /** @var UploadedFile $file */
+        $file = $request->file($field);
+
         if (! $type->is_active) {
             throw new BusinessRuleException('DOCUMENT_TYPE_INACTIVE', 'This document type is no longer accepted.', 422);
         }
@@ -67,32 +84,47 @@ class DocumentService
             throw new BusinessRuleException('DOCUMENT_FORMAT_NOT_ALLOWED', 'This file format is not accepted for '.$type->name.'. Allowed: '.$type->allowed_mimes.'.', 422);
         }
 
+        // SECURITY: the trait keeps the client's extension, so it must agree with the real content
+        // (a PDF named invoice.php is refused instead of being stored as .php).
+        $clientExtension = strtolower((string) $file->getClientOriginalExtension());
+        if (! in_array($contentType, self::CONTENT_TYPES[$clientExtension] ?? [], true)) {
+            throw new BusinessRuleException('DOCUMENT_FORMAT_NOT_ALLOWED', 'The file extension does not match its content. Allowed: '.$type->allowed_mimes.'.', 422);
+        }
+
         if ($file->getSize() > $type->max_size_kb * 1024) {
             throw new BusinessRuleException('DOCUMENT_TOO_LARGE', "The file is larger than {$type->max_size_kb} KB.", 422);
         }
 
-        $directory = 'documents/'.now()->format('Y/m');
-        $name = Str::ulid().'.'.$extension;
-        $path = Storage::disk(self::DISK)->putFileAs($directory, $file, $name);
+        // The checksum is taken from the upload itself, before it is stored.
+        $checksum = hash_file('sha256', $file->getRealPath());
+        $size = $file->getSize();
+        $originalName = Str::limit(basename($file->getClientOriginalName()), 200, '');
+
+        // Stored by the senior's FileUploadTrait on the private disk as uploads/documents/YYYY/MM/<ULID>.<ext>.
+        $path = $this->handleFileUpload($request, $field, null, 'documents/'.now()->format('Y/m'), (string) Str::ulid());
+
+        if ($path === null) {
+            throw new BusinessRuleException('DOCUMENT_FILE_MISSING', 'No file was received.', 422);
+        }
 
         try {
             $document = Document::create([
                 'documentable_type' => $owner->getMorphClass(),
                 'documentable_id' => $owner->getKey(),
                 'document_type_id' => $type->id,
-                'original_name' => Str::limit(basename($file->getClientOriginalName()), 200, ''),
+                'original_name' => $originalName,
                 'path' => $path,
                 'mime_type' => $contentType,
-                'size_bytes' => $file->getSize(),
-                'checksum_sha256' => hash_file('sha256', $file->getRealPath()),
+                'size_bytes' => $size,
+                'checksum_sha256' => $checksum,
                 'issued_on' => $meta['issued_on'] ?? null,
                 'expires_on' => $meta['expires_on'] ?? null,
                 'remarks' => $meta['remarks'] ?? null,
                 'uploaded_by' => $user->id,
             ]);
         } catch (\Throwable $th) {
-            // Never leave an orphan file without a database row pointing at it.
-            Storage::disk(self::DISK)->delete($path);
+            // Never leave an orphan file without a database row pointing at it (the trait's delete).
+            $this->deleteFile($path);
 
             throw $th;
         }
@@ -169,6 +201,8 @@ class DocumentService
 
         $this->logActivity('DOWNLOAD', 'Document', "Downloaded document {$document->public_id}");
 
+        // DECISION: the senior's FileUploadTrait stores and deletes but has no download method, so
+        // reading the stored file back is the one direct use of the private disk (same disk as the trait).
         return Storage::disk(self::DISK)->download($document->path, $name, [
             'Content-Type' => $document->mime_type,
             'X-Content-Type-Options' => 'nosniff',

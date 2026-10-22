@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Accounting;
 
 use App\Enums\GlJournalSource;
@@ -95,7 +97,7 @@ class ProvisionService
             'source_key' => $key,
             'branch_id' => $loan->branch_id,
             'loan_id' => $loan->id,
-        ]));
+        ]), attempts: 3);
 
         return true;
     }

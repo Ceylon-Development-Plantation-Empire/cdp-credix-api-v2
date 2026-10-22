@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Customers;
 
 use App\Enums\IdType;
@@ -24,7 +26,7 @@ class CustomerService
      */
     protected const MINIMUM_AGE = 18;
 
-    protected const PHONE_FIELDS = ['phone_primary', 'phone_secondary', 'whatsapp_number'];
+    protected const PHONE_FIELDS = ['phone_primary', 'phone_secondary', 'whatsapp_number', 'employer_phone', 'business_phone'];
 
     /**
      * @param  array<string, mixed>  $data  Validated CreateCustomerRequest data.
@@ -37,8 +39,8 @@ class CustomerService
             [$attributes, $normalizedId] = $this->prepare($data);
             $this->assertNotRegistered(IdType::from($attributes['id_type']), $normalizedId);
 
+            // The model encrypts the ID number and writes its blind index on save.
             $customer = new Customer($attributes + ['created_by' => $user->id, 'updated_by' => $user->id]);
-            $customer->id_number_normalized = $normalizedId;
             $customer->save();
 
             return $customer->refresh();
@@ -71,15 +73,16 @@ class CustomerService
 
             [$attributes, $normalizedId] = $this->prepare($merged);
 
-            if ($normalizedId !== $customer->id_number_normalized || $attributes['id_type'] !== $customer->id_type->value) {
+            if ($normalizedId !== $customer->normalizedIdNumber() || $attributes['id_type'] !== $customer->id_type->value) {
                 $this->assertNotRegistered(IdType::from($attributes['id_type']), $normalizedId, $customer->id);
             }
 
             $wasVerified = $customer->kyc_status === KycStatus::Verified;
 
             $customer->fill(array_intersect_key($attributes, $data + array_flip(['id_type', 'id_number', 'date_of_birth', 'gender'])));
-            $customer->id_number_normalized = $normalizedId;
             $customer->updated_by = $user->id;
+            // The KYC fingerprint includes the blind index; recompute it now (saving() would be too late).
+            $customer->id_number_hash = Customer::idNumberHash($normalizedId);
 
             if ($wasVerified && $customer->kycFingerprint() !== $customer->kyc_snapshot_hash) {
                 $customer->kyc_status = KycStatus::Pending;
@@ -109,16 +112,20 @@ class CustomerService
         }
 
         $customer = Customer::withoutGlobalScope('branch')->with('branch:id,name')
-            ->where('id_type', $type->value)->where('id_number_normalized', $normalized)->first();
+            ->where('id_type', $type->value)->where('id_number_hash', Customer::idNumberHash($normalized))->first();
 
         if (! $customer) {
             return null;
         }
 
+        $accessible = BranchAccess::canAccessBranch($customer->branch_id);
+
+        // Another branch's customer: say where they are registered, but give no link to the record.
         return [
             'customer_no' => $customer->customer_no,
             'branch' => $customer->branch?->name,
-            'public_id' => BranchAccess::canAccessBranch($customer->branch_id) ? $customer->public_id : null,
+            'accessible' => $accessible,
+            'public_id' => $accessible ? $customer->public_id : null,
         ];
     }
 
@@ -133,6 +140,12 @@ class CustomerService
         $type = IdType::from($data['id_type']);
         $normalized = $type->normalize($data['id_number']);
         $dateOfBirth = CarbonImmutable::parse($data['date_of_birth']);
+
+        // Requests validate the number (ValidIdNumber); a record imported with an invalid one is
+        // refused clearly here instead of failing further down.
+        if ($normalized === null) {
+            throw new BusinessRuleException('ID_NUMBER_INVALID', 'The ID number on this record is not valid for its ID type. Correct the ID number.', 422);
+        }
 
         if ($type === IdType::Nic) {
             // The NIC encodes the date of birth and gender; a mismatch means one of them was typed wrong.
@@ -177,7 +190,7 @@ class CustomerService
     {
         $existing = Customer::withoutGlobalScope('branch')->withTrashed()
             ->where('id_type', $type->value)
-            ->where('id_number_normalized', $normalized)
+            ->where('id_number_hash', Customer::idNumberHash($normalized))
             ->when($ignoreId, fn ($q, $id) => $q->whereKeyNot($id))
             ->first();
 

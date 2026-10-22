@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Enums\CollateralStatus;
@@ -16,6 +18,7 @@ use App\Models\LoanTransaction;
 use App\Models\Setting;
 use App\Models\User;
 use App\Services\Accounting\LoanPostingService;
+use App\Support\BusinessDate;
 use App\Traits\ActivityLogTrait;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -70,7 +73,7 @@ class DisbursementService
 
             $terms = $this->pricing->termsOf($loan);
             $graceDays = (int) ($terms['grace_period_days'] ?? Setting::value('repayment.grace_period_days', 7));
-            $today = CarbonImmutable::today();
+            $today = BusinessDate::todayImmutable();
             $channel = PaymentChannel::from($data['channel']);
             $txnNos = [];
 
@@ -104,7 +107,7 @@ class DisbursementService
             }
 
             return $loan->refresh();
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -134,10 +137,14 @@ class DisbursementService
             ]);
         }
 
+        // The schedule now exists: what is owed after disbursement is the whole booked receivable.
+        $owed = (string) LoanBalanceService::owed($loan);
+
         $disbursement = LoanTransaction::create([
             'loan_id' => $loan->id,
             'type' => TransactionType::Disbursement,
             'amount' => (string) $pricing->amount,
+            'balance_after' => $owed,
             'value_date' => $today->toDateString(),
             'channel' => $channel,
             'external_reference' => $reference,
@@ -154,6 +161,8 @@ class DisbursementService
                 'loan_id' => $loan->id,
                 'type' => TransactionType::Charge,
                 'amount' => (string) $pricing->deductedCharges,
+                // Collected at source from the payout: the borrower's balance does not change.
+                'balance_after' => $owed,
                 'value_date' => $today->toDateString(),
                 'channel' => PaymentChannel::Deduction,
                 'narration' => 'Upfront charges deducted from the disbursement',

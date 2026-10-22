@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Enums\ApprovalAction;
@@ -20,6 +22,8 @@ use App\Models\LoanTransaction;
 use App\Models\Setting;
 use App\Models\User;
 use App\Services\Approvals\ApprovalRequestService;
+use App\Support\BusinessDate;
+use App\Support\Idempotency;
 use App\Traits\ActivityLogTrait;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -57,14 +61,14 @@ class RepaymentService
     {
         $keyHash = $this->keyFor($loan, $idempotencyKey);
 
-        if ($existing = LoanTransaction::where('idempotency_key', $keyHash)->first()) {
+        if ($existing = Idempotency::replay($keyHash, $data['amount'])) {
             return $existing;
         }
 
-        $valueDate = CarbonImmutable::parse($data['value_date'] ?? today());
+        $valueDate = CarbonImmutable::parse($data['value_date'] ?? BusinessDate::today());
         $maxBackdate = (int) Setting::value('payment.max_backdate_days', 0);
 
-        if ($valueDate->lessThan(CarbonImmutable::today()->subDays($maxBackdate))) {
+        if ($valueDate->lessThan(BusinessDate::todayImmutable()->subDays($maxBackdate))) {
             return DB::transaction(function () use ($loan, $data, $keyHash, $by) {
                 $loan = $this->workflow->lock($loan);
                 $this->assertPayable($loan);
@@ -73,7 +77,7 @@ class RepaymentService
                     ->first(fn (ApprovalRequest $r) => ($r->payload['idempotency_key'] ?? null) === $keyHash);
 
                 return $pending ?? $this->approvals->create($loan, ApprovalAction::BackdatedPayment, $data + ['idempotency_key' => $keyHash], $data['narration'] ?? 'Back-dated payment', $by);
-            });
+            }, attempts: 3);
         }
 
         return $this->post($loan, $data, $keyHash, $by);
@@ -87,16 +91,16 @@ class RepaymentService
         return DB::transaction(function () use ($loan, $data, $keyHash, $by, $approvedBy) {
             $loan = $this->workflow->lock($loan);
 
-            if ($existing = LoanTransaction::where('idempotency_key', $keyHash)->first()) {
+            if ($existing = Idempotency::replay($keyHash, $data['amount'])) {
                 return $existing;
             }
 
             $this->assertPayable($loan);
 
             $amount = Money::of($data['amount']);
-            $valueDate = CarbonImmutable::parse($data['value_date'] ?? today());
+            $valueDate = CarbonImmutable::parse($data['value_date'] ?? BusinessDate::today());
 
-            if ($valueDate->lessThan(CarbonImmutable::parse($loan->disbursed_at)->startOfDay())) {
+            if ($valueDate->lessThan(BusinessDate::of($loan->disbursed_at))) {
                 throw new BusinessRuleException('VALUE_DATE_BEFORE_DISBURSEMENT', 'A payment cannot be dated before the loan was disbursed.', 422);
             }
 
@@ -135,7 +139,7 @@ class RepaymentService
             PaymentPosted::dispatch($transaction);
 
             return $transaction;
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -161,7 +165,7 @@ class RepaymentService
         $lines = $transaction->allocations->map(fn ($a) => new AllocationLine($a->loan_installment_id, $a->component, Money::of($a->amount)->negated()))->all();
 
         $reversal = $this->ledger->credit($loan, TransactionType::Reversal, Money::of($transaction->amount), $lines, [
-            'value_date' => today()->toDateString(),
+            'value_date' => BusinessDate::today()->toDateString(),
             'channel' => $transaction->channel,
             'external_reference' => $transaction->external_reference,
             'payer_customer_id' => $transaction->payer_customer_id,

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Console\Commands;
 
 use App\Models\User;
@@ -28,7 +30,8 @@ class CreateAdmin extends Command
             [
                 'username' => ['required', 'string', 'max:50', 'unique:users,username'],
                 'email' => ['required', 'email:rfc', 'max:150', 'unique:users,email'],
-                'password' => ['required', 'confirmed', Password::min(12)->mixedCase()->numbers()->symbols()],
+                // The one system-wide policy (AppServiceProvider).
+                'password' => ['required', 'confirmed', Password::defaults()],
             ],
         );
 
@@ -44,10 +47,13 @@ class CreateAdmin extends Command
             'name' => $this->option('name') ?: $this->argument('username'),
             'username' => $this->argument('username'),
             'email' => $this->argument('email'),
-            'password' => bcrypt($password),
+            // Hashed by the model's "hashed" cast.
+            'password' => $password,
             'user_type' => 'admin',
             'is_active' => true,
             'can_login' => true,
+            // The administrator typed this password themselves: nothing to change at first sign-in.
+            'must_change_password' => false,
         ]);
         $user->assignRole('Super Admin');
 

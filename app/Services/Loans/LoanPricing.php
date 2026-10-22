@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Finance\Schedule\Schedule;
@@ -8,13 +10,13 @@ use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 
 /**
- * The priced result of a loan: its schedule and the upfront charges, plus the amount columns
- * that are stored on the loan.
+ * The priced result of a loan: its schedule and the upfront charges, plus the amount columns that
+ * are stored on the loan.
  */
 final class LoanPricing
 {
     /**
-     * @param  list<array{charge_type: string, collection: string, amount: string}>  $charges
+     * @param  list<array{charge_type: string, name: string, display_group: string, collection: string, amount: string}>  $charges
      */
     public function __construct(
         public readonly BigDecimal $amount,
@@ -24,14 +26,18 @@ final class LoanPricing
         public readonly BigDecimal $firstInstallmentCharges,
     ) {}
 
+    /**
+     * Total of the upfront charges (deducted + added to the first installment).
+     */
     public function upfrontTotal(): BigDecimal
     {
         return Money::sum(array_column($this->charges, 'amount'));
     }
 
     /**
-     * Monthly cost of the new loan, for the debt service ratio. A weekly installment is
-     * turned into a monthly figure (× 52 / 12).
+     * Monthly cost of the new loan, for the debt service ratio. A weekly installment is turned
+     * into a monthly figure: installment × periods per year / 12, kept at full precision and
+     * rounded half-up to cents once at the end.
      */
     public function monthlyInstallment(int $periodsPerYear): BigDecimal
     {
@@ -39,6 +45,28 @@ final class LoanPricing
     }
 
     /**
+     * The upfront charges grouped by their display name (owner decision: one combined line such as
+     * "Service charges", with the itemised breakdown underneath for a customer who asks).
+     *
+     * @return list<array{group: string, total: string, items: list<array{charge_type: string, name: string, amount: string}>}>
+     */
+    public function chargeBreakdown(): array
+    {
+        $groups = [];
+
+        foreach ($this->charges as $charge) {
+            $group = $charge['display_group'];
+            $groups[$group] ??= ['group' => $group, 'total' => Money::zero(), 'items' => []];
+            $groups[$group]['total'] = $groups[$group]['total']->plus($charge['amount']);
+            $groups[$group]['items'][] = ['charge_type' => $charge['charge_type'], 'name' => $charge['name'], 'amount' => $charge['amount']];
+        }
+
+        return array_values(array_map(fn (array $g) => ['group' => $g['group'], 'total' => (string) $g['total'], 'items' => $g['items']], $groups));
+    }
+
+    /**
+     * The amount columns stored on the loan.
+     *
      * @return array<string, string>
      */
     public function columns(): array
@@ -55,6 +83,9 @@ final class LoanPricing
 
     /**
      * Summary shown with an offer and stored as what the borrower accepted.
+     *
+     * DECISION: the breakdown is not part of this summary: the summary is hashed into the
+     * borrower's consent, and it must stay exactly the figures the borrower agreed to.
      *
      * @return array<string, mixed>
      */

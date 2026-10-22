@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Accounting;
 
 use App\Enums\ApprovalAction;
@@ -15,6 +17,7 @@ use App\Models\GlJournalLine;
 use App\Models\Setting;
 use App\Models\User;
 use App\Services\Approvals\ApprovalRequestService;
+use App\Support\BusinessDate;
 use App\Traits\ActivityLogTrait;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
@@ -161,7 +164,7 @@ class GeneralLedgerService
                 'journal_no' => $journal->journal_no,
                 'total' => (string) $journal->total,
             ], $data['narration'], $by);
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -205,7 +208,7 @@ class GeneralLedgerService
             throw new BusinessRuleException('PERIOD_ALREADY_CLOSED', "The books are already closed through {$current->toDateString()}.", 422);
         }
 
-        if ($through->greaterThanOrEqualTo(CarbonImmutable::today())) {
+        if ($through->greaterThanOrEqualTo(BusinessDate::todayImmutable())) {
             throw new BusinessRuleException('PERIOD_NOT_ENDED', 'Only a past date can be closed.', 422);
         }
 

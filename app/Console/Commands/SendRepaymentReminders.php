@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Console\Commands;
 
 use App\Enums\InstallmentStatus;
@@ -11,6 +13,7 @@ use App\Models\LoanInstallment;
 use App\Models\LoanParty;
 use App\Models\Setting;
 use App\Services\Notifications\NotificationService;
+use App\Support\BusinessDate;
 use Illuminate\Console\Command;
 
 /**
@@ -58,7 +61,7 @@ class SendRepaymentReminders extends Command
         LoanInstallment::query()
             ->with(['loan' => fn ($q) => $q->withoutGlobalScope('branch')])
             ->whereIn('status', [InstallmentStatus::Upcoming->value, InstallmentStatus::PartiallyPaid->value])
-            ->whereDate('due_date', today()->addDays($days))
+            ->whereDate('due_date', BusinessDate::today()->addDays($days))
             ->whereHas('loan', fn ($q) => $q->withoutGlobalScope('branch')->where('status', LoanStatus::Active->value))
             ->chunkById(200, function ($installments) use ($notifications, &$sent) {
                 foreach ($installments as $installment) {

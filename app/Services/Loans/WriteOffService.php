@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Enums\AllocationComponent;
@@ -19,6 +21,8 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Services\Accounting\LoanPostingService;
 use App\Services\Approvals\ApprovalRequestService;
+use App\Support\BusinessDate;
+use App\Support\Idempotency;
 use App\Traits\ActivityLogTrait;
 use Brick\Math\BigDecimal;
 use Illuminate\Support\Facades\DB;
@@ -58,7 +62,7 @@ class WriteOffService
                 'days_past_due' => $loan->days_past_due,
                 'outstanding' => (string) $this->owed($loan),
             ], $reason, $by);
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -86,7 +90,7 @@ class WriteOffService
         $amount = Money::sum(array_map(fn (AllocationLine $l) => $l->amount, $lines));
 
         $transaction = $this->ledger->credit($loan, TransactionType::WriteOff, $amount, $lines, [
-            'value_date' => today()->toDateString(),
+            'value_date' => BusinessDate::today()->toDateString(),
             'channel' => PaymentChannel::System,
             'narration' => "Written off: {$reason}",
             'posted_by' => $requestedBy,
@@ -116,7 +120,7 @@ class WriteOffService
         return DB::transaction(function () use ($loan, $data, $keyHash, $by) {
             $loan = $this->workflow->lock($loan);
 
-            if ($existing = LoanTransaction::where('idempotency_key', $keyHash)->first()) {
+            if ($existing = Idempotency::replay($keyHash, $data['amount'])) {
                 return $existing;
             }
 
@@ -137,7 +141,9 @@ class WriteOffService
                 'loan_id' => $loan->id,
                 'type' => TransactionType::Recovery,
                 'amount' => (string) $amount,
-                'value_date' => today()->toDateString(),
+                // A written-off loan owes nothing on its schedule; the recovery is income of its own.
+                'balance_after' => (string) LoanBalanceService::owed($loan),
+                'value_date' => BusinessDate::today()->toDateString(),
                 'channel' => PaymentChannel::from($data['channel']),
                 'external_reference' => $data['external_reference'] ?? null,
                 'idempotency_key' => $keyHash,
@@ -153,7 +159,7 @@ class WriteOffService
             $this->logActivity('RECOVERY', 'Loan', "Recovery {$transaction->txn_no} of {$amount} on {$loan->loan_no}");
 
             return $transaction;
-        });
+        }, attempts: 3);
     }
 
     /**

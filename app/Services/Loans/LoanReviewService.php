@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Loans;
 
 use App\Enums\CollateralStatus;
@@ -11,6 +13,7 @@ use App\Models\Customer;
 use App\Models\Loan;
 use App\Models\LoanParty;
 use App\Models\User;
+use App\Support\Collateral\CollateralTypes;
 use App\Traits\ActivityLogTrait;
 use Brick\Math\BigDecimal;
 use Illuminate\Support\Collection;
@@ -49,7 +52,7 @@ class LoanReviewService
             $this->workflow->assertSegregation($loan, $by, ['submitted' => LoanStatus::Submitted]);
 
             return $this->workflow->transition($loan, LoanStatus::InReview, $by);
-        });
+        }, attempts: 3);
     }
 
     public function returnForCorrection(Loan $loan, string $remarks, User $by): Loan
@@ -59,7 +62,7 @@ class LoanReviewService
             $this->assertMove($loan, LoanStatus::Returned);
 
             return $this->workflow->transition($loan, LoanStatus::Returned, $by, $remarks);
-        });
+        }, attempts: 3);
     }
 
     public function verify(Loan $loan, ?string $remarks, User $by): Loan
@@ -80,7 +83,7 @@ class LoanReviewService
             }
 
             return $this->workflow->transition($loan, LoanStatus::Verified, $by, $remarks);
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -128,7 +131,7 @@ class LoanReviewService
                 'approved_amount' => (string) $total,
                 'rate' => (string) $rate,
             ]);
-        });
+        }, attempts: 3);
     }
 
     public function reject(Loan $loan, string $remarks, User $by): Loan
@@ -138,7 +141,7 @@ class LoanReviewService
             $this->assertMove($loan, LoanStatus::Rejected);
 
             return $this->workflow->transition($loan, LoanStatus::Rejected, $by, $remarks);
-        });
+        }, attempts: 3);
     }
 
     public function cancel(Loan $loan, string $remarks, User $by): Loan
@@ -148,7 +151,7 @@ class LoanReviewService
             $this->assertMove($loan, LoanStatus::Cancelled);
 
             return $this->workflow->transition($loan, LoanStatus::Cancelled, $by, $remarks);
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -276,8 +279,8 @@ class LoanReviewService
         }
 
         foreach ($terms['collateral_rules'] as $rule) {
-            if ($rule['is_mandatory'] && ! $held->contains(fn ($c) => $c->type->value === $rule['collateral_type'])) {
-                $problems[] = ['code' => 'COLLATERAL_REQUIRED', 'message' => "A {$rule['collateral_type']} collateral is required for this product."];
+            if ($rule['is_mandatory'] && ! $held->contains(fn ($c) => $c->type === $rule['collateral_type'])) {
+                $problems[] = ['code' => 'COLLATERAL_REQUIRED', 'message' => 'A '.app(CollateralTypes::class)->label($rule['collateral_type']).' collateral is required for this product.'];
             }
         }
 
