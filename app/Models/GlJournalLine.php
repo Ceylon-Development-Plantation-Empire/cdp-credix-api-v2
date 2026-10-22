@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
@@ -21,10 +23,16 @@ class GlJournalLine extends Model
         'memo',
     ];
 
-    protected $casts = [
-        'debit' => 'decimal:2',
-        'credit' => 'decimal:2',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'debit' => 'decimal:2',
+            'credit' => 'decimal:2',
+        ];
+    }
 
     protected static function booted(): void
     {

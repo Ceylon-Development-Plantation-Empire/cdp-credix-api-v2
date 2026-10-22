@@ -1,18 +1,43 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
+use App\Enums\LookupType;
+use App\Models\Concerns\Audited;
+use App\Support\BlindIndex;
+use App\Support\Lookups\LookupAttribute;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Collection;
 
+/**
+ * The HR record behind a staff user.
+ *
+ * SECURITY: id_number is encrypted at rest; id_number_hash (blind index of the trimmed, upper-cased
+ * number) is kept in step on every save and is what uniqueness and look-ups use.
+ *
+ * @property int $id
+ * @property string $full_name
+ * @property string|null $employee_type
+ * @property string $id_number
+ * @property string $id_number_hash
+ * @property bool $is_active
+ */
 class Employee extends Model
 {
+    use Audited;
     use HasFactory;
 
+    /**
+     * @var list<string>
+     */
     protected $fillable = [
         'f_name',
         'l_name',
@@ -43,21 +68,78 @@ class Employee extends Model
         'whatsapp_number',
         'start_date',
         'end_date',
-        'joined_at',
         'is_active',
     ];
 
-    protected $casts = [
-        'is_active' => 'boolean',
-        'have_whatsapp' => 'boolean',
-        'date_of_birth' => 'date',
-        'start_date' => 'date',
-        'end_date' => 'date',
-        'joined_at' => 'datetime',
-    ];
+    /**
+     * SECURITY: the blind index and the lookup id never leave the API.
+     *
+     * @var list<string>
+     */
+    protected $hidden = ['id_number_hash', 'employee_type_id'];
 
     /**
-     * Scope a query to only include active employees.
+     * @var list<string>
+     */
+    protected $appends = ['employee_type'];
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            // SECURITY: AES-256 with APP_KEY at rest; decrypted only when read in PHP.
+            'id_number' => 'encrypted',
+            'is_active' => 'boolean',
+            'have_whatsapp' => 'boolean',
+            'date_of_birth' => 'date',
+            'start_date' => 'date',
+            'end_date' => 'date',
+        ];
+    }
+
+    /**
+     * Keep the blind index in step with the encrypted ID number.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Employee $employee) {
+            if ($employee->isDirty('id_number') || $employee->id_number_hash === null) {
+                $employee->id_number_hash = self::idNumberHash((string) $employee->id_number);
+            }
+        });
+    }
+
+    /**
+     * The blind index of an employee ID number (spaces removed, upper case).
+     */
+    public static function idNumberHash(string $idNumber): string
+    {
+        return BlindIndex::hash('employee-id', strtoupper((string) preg_replace('/\s+/', '', $idNumber)));
+    }
+
+    /**
+     * Find an employee by ID number without decrypting every row.
+     */
+    public static function findByIdNumber(string $idNumber): ?self
+    {
+        return static::query()->where('id_number_hash', self::idNumberHash($idNumber))->first();
+    }
+
+    /**
+     * employee_type (code) ↔ employee_type_id (lookups FK).
+     *
+     * @return Attribute<string|null, string|null>
+     */
+    protected function employeeType(): Attribute
+    {
+        return LookupAttribute::for($this, LookupType::EmployeeType, 'employee_type_id', 'employee_type');
+    }
+
+    /**
+     * @param  Builder<Employee>  $query
+     * @return Builder<Employee>
      */
     public function scopeActive(Builder $query): Builder
     {
@@ -65,7 +147,10 @@ class Employee extends Model
     }
 
     /**
-     * Scope a query to search employees by name, email, or employee code.
+     * Search by name, email or employee code (the ID number is encrypted and never LIKE-searched).
+     *
+     * @param  Builder<Employee>  $query
+     * @return Builder<Employee>
      */
     public function scopeSearch(Builder $query, ?string $search): Builder
     {
@@ -78,12 +163,13 @@ class Employee extends Model
                 ->orWhere('l_name', 'like', "%{$search}%")
                 ->orWhere('full_name', 'like', "%{$search}%")
                 ->orWhere('employee_code', 'like', "%{$search}%")
-                ->orWhere('email', 'like', "%{$search}%");
+                ->orWhere('email', 'like', "%{$search}%")
+                ->orWhere('id_number_hash', self::idNumberHash($search));
         });
     }
 
     /**
-     * Get the user account associated with the employee.
+     * @return HasOne<User, $this>
      */
     public function user(): HasOne
     {
@@ -91,7 +177,7 @@ class Employee extends Model
     }
 
     /**
-     * Get the reporting manager of the employee.
+     * @return BelongsTo<Employee, $this>
      */
     public function reportingManager(): BelongsTo
     {
@@ -99,7 +185,7 @@ class Employee extends Model
     }
 
     /**
-     * Get the subordinates reporting to this employee.
+     * @return HasMany<Employee, $this>
      */
     public function subordinates(): HasMany
     {
@@ -107,7 +193,7 @@ class Employee extends Model
     }
 
     /**
-     * Get the province associated with the employee.
+     * @return BelongsTo<Province, $this>
      */
     public function province(): BelongsTo
     {
@@ -115,7 +201,7 @@ class Employee extends Model
     }
 
     /**
-     * Get the region associated with the employee.
+     * @return BelongsTo<Region, $this>
      */
     public function region(): BelongsTo
     {
@@ -123,7 +209,7 @@ class Employee extends Model
     }
 
     /**
-     * Get the zonal associated with the employee.
+     * @return BelongsTo<Zonal, $this>
      */
     public function zonal(): BelongsTo
     {
@@ -131,7 +217,7 @@ class Employee extends Model
     }
 
     /**
-     * Get the branch where the employee works.
+     * @return BelongsTo<Branch, $this>
      */
     public function branch(): BelongsTo
     {
@@ -139,7 +225,7 @@ class Employee extends Model
     }
 
     /**
-     * Get the department where the employee works.
+     * @return BelongsTo<Department, $this>
      */
     public function department(): BelongsTo
     {
@@ -147,7 +233,7 @@ class Employee extends Model
     }
 
     /**
-     * Get the designation of the employee.
+     * @return BelongsTo<Designation, $this>
      */
     public function designation(): BelongsTo
     {
@@ -155,7 +241,7 @@ class Employee extends Model
     }
 
     /**
-     * Get the historical reporting manager changes for this employee.
+     * @return HasMany<EmployeeHierarchyHistory, $this>
      */
     public function hierarchyHistories(): HasMany
     {
@@ -163,49 +249,33 @@ class Employee extends Model
     }
 
     /**
-     * Resolve reporting manager as of a specific date.
+     * The reporting manager on a given date (from the hierarchy history).
+     *
+     * @param  string  $date  Y-m-d
      */
     public function resolveReportingManagerAsOf(string $date): ?Employee
     {
-        $history = EmployeeHierarchyHistory::where('employee_id', $this->id)
+        return EmployeeHierarchyHistory::where('employee_id', $this->id)
             ->asOf($date)
             ->with('reportingManager')
-            ->first();
-
-        return $history ? $history->reportingManager : null;
+            ->first()
+            ?->reportingManager;
     }
 
     /**
-     * Resolve direct subordinates as of a specific date.
+     * The direct subordinates on a given date (from the hierarchy history).
+     *
+     * @param  string  $date  Y-m-d
+     * @return Collection<int, Employee>
      */
-    public function resolveSubordinatesAsOf(string $date)
+    public function resolveSubordinatesAsOf(string $date): Collection
     {
-        $histories = EmployeeHierarchyHistory::where('reporting_manager_id', $this->id)
+        return EmployeeHierarchyHistory::where('reporting_manager_id', $this->id)
             ->asOf($date)
             ->with('employee')
-            ->get();
-
-        return $histories->map(fn ($h) => $h->employee)->filter();
-    }
-
-    /**
-     * Get all user IDs associated with subordinate employees (recursive).
-     */
-    public function getAllDescendantUserIds(): array
-    {
-        $userIds = [];
-        $subordinates = Employee::where('reporting_manager_id', $this->id)->get();
-
-        foreach ($subordinates as $subordinate) {
-            $subUser = User::where('employee_id', $subordinate->id)->first();
-            if ($subUser) {
-                $userIds[] = $subUser->id;
-                $userIds = array_merge($userIds, $subUser->getAllDescendantIds());
-            } else {
-                $userIds = array_merge($userIds, $subordinate->getAllDescendantUserIds());
-            }
-        }
-
-        return $userIds;
+            ->get()
+            ->map(fn (EmployeeHierarchyHistory $history) => $history->employee)
+            ->filter()
+            ->values();
     }
 }

@@ -1,15 +1,20 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\Language;
 use App\Enums\NotificationChannel;
+use App\Models\Concerns\Audited;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Template extends Model
 {
+    use Audited;
+
     protected $fillable = [
         'slug',
         'channel',
@@ -22,11 +27,17 @@ class Template extends Model
         'updated_by',
     ];
 
-    protected $casts = [
-        'channel' => NotificationChannel::class,
-        'language' => Language::class,
-        'is_active' => 'boolean',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'channel' => NotificationChannel::class,
+            'language' => Language::class,
+            'is_active' => 'boolean',
+        ];
+    }
 
     public function scopeActive(Builder $query): Builder
     {

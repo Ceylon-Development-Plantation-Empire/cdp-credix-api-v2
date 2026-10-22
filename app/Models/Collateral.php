@@ -1,20 +1,32 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\CollateralStatus;
-use App\Enums\CollateralType;
+use App\Enums\LookupType;
+use App\Models\Concerns\Audited;
 use App\Models\Concerns\HasPublicId;
+use App\Support\Lookups\LookupAttribute;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
+/**
+ * One pledged item. type is the code of a collateral_type lookup (stored as collateral_type_id);
+ * lending_margin_plan_id is the optional plan it was valued under.
+ *
+ * @property string $type
+ */
 class Collateral extends Model
 {
+    use Audited;
     use HasPublicId;
 
     /**
-     * LTV, eligible amount and the status columns are set by CollateralService.
+     * LTV, plan, eligible amount and the status columns are set by CollateralService.
      */
     protected $fillable = [
         'loan_id',
@@ -29,23 +41,41 @@ class Collateral extends Model
         'created_by',
     ];
 
-    protected $casts = [
-        'type' => CollateralType::class,
-        'status' => CollateralStatus::class,
-        'details' => 'array',
-        'market_value' => 'decimal:2',
-        'forced_sale_value' => 'decimal:2',
-        'ltv_percent' => 'decimal:2',
-        'eligible_amount' => 'decimal:2',
-        'valued_on' => 'date',
-        'verified_at' => 'datetime',
-        'perfected_at' => 'datetime',
-        'released_at' => 'datetime',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'status' => CollateralStatus::class,
+            'details' => 'array',
+            'market_value' => 'decimal:2',
+            'forced_sale_value' => 'decimal:2',
+            'ltv_percent' => 'decimal:2',
+            'eligible_amount' => 'decimal:2',
+            'valued_on' => 'date',
+            'verified_at' => 'datetime',
+            'perfected_at' => 'datetime',
+            'released_at' => 'datetime',
+        ];
+    }
 
     protected $attributes = [
         'status' => 'proposed',
     ];
+
+    /**
+     * @var list<string>
+     */
+    protected $hidden = ['collateral_type_id'];
+
+    /**
+     * type (code) ↔ collateral_type_id (lookups FK).
+     */
+    protected function type(): Attribute
+    {
+        return LookupAttribute::for($this, LookupType::CollateralType, 'collateral_type_id', 'type');
+    }
 
     /**
      * Collateral that still secures the loan.
@@ -58,6 +88,11 @@ class Collateral extends Model
     public function loan(): BelongsTo
     {
         return $this->belongsTo(Loan::class);
+    }
+
+    public function lendingMarginPlan(): BelongsTo
+    {
+        return $this->belongsTo(LendingMarginPlan::class);
     }
 
     public function owner(): BelongsTo

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\OtpPurpose;
@@ -27,16 +29,22 @@ class OtpChallenge extends Model
         'created_by',
     ];
 
-    protected $casts = [
-        'purpose' => OtpPurpose::class,
-        'status' => OtpStatus::class,
-        'payload' => 'array',
-        'expires_at' => 'datetime',
-        'verified_at' => 'datetime',
-        'attempts' => 'integer',
-        'max_attempts' => 'integer',
-        'send_count' => 'integer',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'purpose' => OtpPurpose::class,
+            'status' => OtpStatus::class,
+            'payload' => 'array',
+            'expires_at' => 'datetime',
+            'verified_at' => 'datetime',
+            'attempts' => 'integer',
+            'max_attempts' => 'integer',
+            'send_count' => 'integer',
+        ];
+    }
 
     protected $hidden = [
         'code_hash',

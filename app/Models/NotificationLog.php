@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\NotificationChannel;
@@ -36,11 +38,17 @@ class NotificationLog extends Model
         'sent_at',
     ];
 
-    protected $casts = [
-        'channel' => NotificationChannel::class,
-        'status' => NotificationStatus::class,
-        'sent_at' => 'datetime',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'channel' => NotificationChannel::class,
+            'status' => NotificationStatus::class,
+            'sent_at' => 'datetime',
+        ];
+    }
 
     protected $hidden = [
         'message_hash',

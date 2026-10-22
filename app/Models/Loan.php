@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\BorrowerType;
@@ -9,6 +11,7 @@ use App\Enums\LoanStatus;
 use App\Enums\PartyRole;
 use App\Enums\PricingMethod;
 use App\Enums\RepaymentFrequency;
+use App\Models\Concerns\Audited;
 use App\Models\Concerns\BelongsToBranch;
 use App\Models\Concerns\HasPublicId;
 use App\Models\Concerns\HasReferenceNumber;
@@ -20,6 +23,13 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class Loan extends Model
 {
+    use Audited;
+
+    /**
+     * Columns whose change alone is not written to the audit trail (see Concerns\Audited).
+     */
+    public const AUDIT_IGNORED = ['outstanding_principal', 'outstanding_profit', 'outstanding_charges', 'outstanding_penalty', 'arrears_amount', 'days_past_due', 'risk_stage'];
+
     use BelongsToBranch, HasPublicId, HasReferenceNumber;
 
     public const REFERENCE_PREFIX = 'APP';
@@ -43,48 +53,57 @@ class Loan extends Model
         'tenure',
         'created_by',
         'updated_by',
+        // Custom fields defined as data (lookups custom_field.loan), validated by the request.
+        'meta',
     ];
 
-    protected $casts = [
-        'borrower_type' => BorrowerType::class,
-        'finance_basis' => FinanceBasis::class,
-        'pricing_method' => PricingMethod::class,
-        'repayment_frequency' => RepaymentFrequency::class,
-        'status' => LoanStatus::class,
-        'closure_reason' => ClosureReason::class,
-        'rate' => 'decimal:4',
-        'tenure' => 'integer',
-        'requested_amount' => 'decimal:2',
-        'approved_amount' => 'decimal:2',
-        'financed_amount' => 'decimal:2',
-        'profit_amount' => 'decimal:2',
-        'upfront_charges' => 'decimal:2',
-        'net_disbursement_amount' => 'decimal:2',
-        'installment_amount' => 'decimal:2',
-        'residual_value' => 'decimal:2',
-        'terms_snapshot' => 'array',
-        'assessed_monthly_income' => 'decimal:2',
-        'assessed_monthly_expenses' => 'decimal:2',
-        'existing_obligations' => 'decimal:2',
-        'dsr_percent' => 'decimal:2',
-        'submitted_at' => 'datetime',
-        'approved_at' => 'datetime',
-        'accepted_at' => 'datetime',
-        'disbursed_at' => 'datetime',
-        'first_due_date' => 'date',
-        'maturity_date' => 'date',
-        'income_suspended_at' => 'date',
-        'schedule_starts_on' => 'date',
-        'renewal_count' => 'integer',
-        'closed_at' => 'datetime',
-        'outstanding_principal' => 'decimal:2',
-        'outstanding_profit' => 'decimal:2',
-        'outstanding_charges' => 'decimal:2',
-        'outstanding_penalty' => 'decimal:2',
-        'arrears_amount' => 'decimal:2',
-        'days_past_due' => 'integer',
-        'risk_stage' => 'integer',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'borrower_type' => BorrowerType::class,
+            'finance_basis' => FinanceBasis::class,
+            'pricing_method' => PricingMethod::class,
+            'repayment_frequency' => RepaymentFrequency::class,
+            'status' => LoanStatus::class,
+            'closure_reason' => ClosureReason::class,
+            'rate' => 'decimal:4',
+            'tenure' => 'integer',
+            'requested_amount' => 'decimal:2',
+            'approved_amount' => 'decimal:2',
+            'financed_amount' => 'decimal:2',
+            'profit_amount' => 'decimal:2',
+            'upfront_charges' => 'decimal:2',
+            'net_disbursement_amount' => 'decimal:2',
+            'installment_amount' => 'decimal:2',
+            'residual_value' => 'decimal:2',
+            'terms_snapshot' => 'array',
+            'assessed_monthly_income' => 'decimal:2',
+            'assessed_monthly_expenses' => 'decimal:2',
+            'existing_obligations' => 'decimal:2',
+            'dsr_percent' => 'decimal:2',
+            'submitted_at' => 'datetime',
+            'approved_at' => 'datetime',
+            'accepted_at' => 'datetime',
+            'disbursed_at' => 'datetime',
+            'first_due_date' => 'date',
+            'maturity_date' => 'date',
+            'income_suspended_at' => 'date',
+            'schedule_starts_on' => 'date',
+            'renewal_count' => 'integer',
+            'closed_at' => 'datetime',
+            'outstanding_principal' => 'decimal:2',
+            'outstanding_profit' => 'decimal:2',
+            'outstanding_charges' => 'decimal:2',
+            'outstanding_penalty' => 'decimal:2',
+            'arrears_amount' => 'decimal:2',
+            'days_past_due' => 'integer',
+            'risk_stage' => 'integer',
+            'meta' => 'array',
+        ];
+    }
 
     protected $hidden = [
         'terms_snapshot',

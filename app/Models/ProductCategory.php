@@ -1,8 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\FinanceBasis;
+use App\Models\Concerns\Audited;
 use App\Models\Concerns\HasSlug;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -11,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProductCategory extends Model
 {
+    use Audited;
     use HasSlug;
 
     protected $fillable = [
@@ -25,11 +29,17 @@ class ProductCategory extends Model
         'updated_by',
     ];
 
-    protected $casts = [
-        'finance_basis' => FinanceBasis::class,
-        'is_active' => 'boolean',
-        'sort_order' => 'integer',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'finance_basis' => FinanceBasis::class,
+            'is_active' => 'boolean',
+            'sort_order' => 'integer',
+        ];
+    }
 
     public function scopeActive(Builder $query): Builder
     {

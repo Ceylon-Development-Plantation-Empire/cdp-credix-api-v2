@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\EmploymentStatus;
@@ -7,9 +9,11 @@ use App\Enums\Gender;
 use App\Enums\IdType;
 use App\Enums\KycStatus;
 use App\Enums\Language;
+use App\Models\Concerns\Audited;
 use App\Models\Concerns\BelongsToBranch;
 use App\Models\Concerns\HasPublicId;
 use App\Models\Concerns\HasReferenceNumber;
+use App\Support\BlindIndex;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -20,6 +24,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Customer extends Model
 {
+    use Audited;
     use BelongsToBranch, HasPublicId, HasReferenceNumber, SoftDeletes;
 
     public const REFERENCE_PREFIX = 'CUS';
@@ -32,7 +37,8 @@ class Customer extends Model
      */
     public const KYC_FIELDS = [
         'id_type',
-        'id_number_normalized',
+        // The blind index stands for the ID number: it changes whenever the normalised number changes.
+        'id_number_hash',
         'full_name',
         'name_with_initials',
         'date_of_birth',
@@ -51,7 +57,7 @@ class Customer extends Model
     ];
 
     /**
-     * KYC columns, customer_no and id_number_normalized are not fillable; the services set them.
+     * KYC columns, customer_no and id_number_hash are not fillable; the model and services set them.
      */
     protected $fillable = [
         'branch_id',
@@ -68,6 +74,7 @@ class Customer extends Model
         'email',
         'address_line_1',
         'address_line_2',
+        'landmark',
         'city',
         'gn_division',
         'ds_division',
@@ -78,30 +85,87 @@ class Customer extends Model
         'occupation',
         'employer_name',
         'employer_address',
+        'employer_phone',
+        'employer_email',
         'business_name',
         'business_registration_no',
+        'business_nature',
+        'business_address',
+        'business_phone',
+        'business_email',
         'recommended_by_employee_id',
+        // Custom fields defined as data (lookups custom_field.customer), validated by the request.
+        'meta',
         'is_active',
         'created_by',
         'updated_by',
     ];
 
-    protected $casts = [
-        'id_type' => IdType::class,
-        'gender' => Gender::class,
-        'preferred_language' => Language::class,
-        'employment_status' => EmploymentStatus::class,
-        'kyc_status' => KycStatus::class,
-        'date_of_birth' => 'date',
-        'kyc_verified_at' => 'datetime',
-        'kyc_expires_at' => 'datetime',
-        'is_active' => 'boolean',
-        'credit_score' => 'integer',
-    ];
+    /**
+     * SECURITY: the blind index never leaves the API.
+     *
+     * @var list<string>
+     */
+    protected $hidden = ['id_number_hash'];
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            // SECURITY: AES-256 with APP_KEY at rest; decrypted only when read in PHP.
+            'id_number' => 'encrypted',
+            'id_type' => IdType::class,
+            'gender' => Gender::class,
+            'preferred_language' => Language::class,
+            'employment_status' => EmploymentStatus::class,
+            'kyc_status' => KycStatus::class,
+            'date_of_birth' => 'date',
+            'kyc_verified_at' => 'datetime',
+            'kyc_expires_at' => 'datetime',
+            'is_active' => 'boolean',
+            'credit_score' => 'integer',
+            'meta' => 'array',
+        ];
+    }
 
     protected $attributes = [
         'kyc_status' => 'pending',
     ];
+
+    /**
+     * Keep the blind index in step with the encrypted ID number (and its type).
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Customer $customer) {
+            if ($customer->isDirty(['id_number', 'id_type']) || $customer->id_number_hash === null) {
+                // Requests are validated (ValidIdNumber) so the number normally normalises; a number
+                // that does not (imported legacy data) is indexed in its cleaned form, never as "".
+                $customer->id_number_hash = self::idNumberHash(
+                    $customer->normalizedIdNumber() ?? strtoupper((string) preg_replace('/[\s-]+/', '', (string) $customer->id_number))
+                );
+            }
+        });
+    }
+
+    /**
+     * The blind index of a normalised ID number (see App\Support\BlindIndex).
+     */
+    public static function idNumberHash(string $normalizedIdNumber): string
+    {
+        return BlindIndex::hash('customer-id', $normalizedIdNumber);
+    }
+
+    /**
+     * The ID number in its comparable form (12-digit NIC, upper-case passport / licence), or null
+     * when the stored number is not valid for its type.
+     */
+    public function normalizedIdNumber(): ?string
+    {
+        return $this->id_type?->normalize((string) $this->id_number);
+    }
 
     public function scopeActive(Builder $query): Builder
     {
@@ -132,7 +196,7 @@ class Customer extends Model
             }
 
             if ($normalizedIds) {
-                $q->orWhereIn('id_number_normalized', $normalizedIds);
+                $q->orWhereIn('id_number_hash', array_map(self::idNumberHash(...), $normalizedIds));
             }
         });
     }

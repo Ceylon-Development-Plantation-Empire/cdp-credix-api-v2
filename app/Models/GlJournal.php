@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\GlJournalSource;
@@ -40,14 +42,20 @@ class GlJournal extends Model
         'created_by',
     ];
 
-    protected $casts = [
-        'source' => GlJournalSource::class,
-        'status' => GlJournalStatus::class,
-        'entry_date' => 'date',
-        'value_date' => 'date',
-        'total' => 'decimal:2',
-        'posted_at' => 'datetime',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'source' => GlJournalSource::class,
+            'status' => GlJournalStatus::class,
+            'entry_date' => 'date',
+            'value_date' => 'date',
+            'total' => 'decimal:2',
+            'posted_at' => 'datetime',
+        ];
+    }
 
     protected $hidden = [
         'source_key',

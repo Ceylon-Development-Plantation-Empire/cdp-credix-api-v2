@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\ApprovalStatus;
@@ -7,6 +9,7 @@ use App\Enums\FinanceBasis;
 use App\Enums\PricingMethod;
 use App\Enums\ProductStatus;
 use App\Enums\RepaymentFrequency;
+use App\Models\Concerns\Audited;
 use App\Models\Concerns\HasSlug;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -17,6 +20,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Product extends Model
 {
+    use Audited;
     use HasSlug, SoftDeletes;
 
     /**
@@ -68,34 +72,43 @@ class Product extends Model
         'early_settlement_rebate_percent',
         'created_by',
         'updated_by',
+        // Custom fields defined as data (lookups custom_field.product), validated by the request.
+        'meta',
     ];
 
-    protected $casts = [
-        'pricing_method' => PricingMethod::class,
-        'repayment_frequency' => RepaymentFrequency::class,
-        'status' => ProductStatus::class,
-        'default_rate' => 'decimal:4',
-        'min_rate' => 'decimal:4',
-        'max_rate' => 'decimal:4',
-        'min_amount' => 'decimal:2',
-        'max_amount' => 'decimal:2',
-        'min_tenure' => 'integer',
-        'max_tenure' => 'integer',
-        'allows_individual' => 'boolean',
-        'allows_joint' => 'boolean',
-        'allows_group' => 'boolean',
-        'min_group_members' => 'integer',
-        'max_group_members' => 'integer',
-        'min_guarantors' => 'integer',
-        'max_guarantors' => 'integer',
-        'requires_collateral' => 'boolean',
-        'grace_period_days' => 'integer',
-        'max_dsr_percent' => 'decimal:2',
-        'residual_value_percent' => 'decimal:2',
-        'early_settlement_allowed' => 'boolean',
-        'early_settlement_rebate_percent' => 'decimal:2',
-        'shariah_approved_at' => 'datetime',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'pricing_method' => PricingMethod::class,
+            'repayment_frequency' => RepaymentFrequency::class,
+            'status' => ProductStatus::class,
+            'default_rate' => 'decimal:4',
+            'min_rate' => 'decimal:4',
+            'max_rate' => 'decimal:4',
+            'min_amount' => 'decimal:2',
+            'max_amount' => 'decimal:2',
+            'min_tenure' => 'integer',
+            'max_tenure' => 'integer',
+            'allows_individual' => 'boolean',
+            'allows_joint' => 'boolean',
+            'allows_group' => 'boolean',
+            'min_group_members' => 'integer',
+            'max_group_members' => 'integer',
+            'min_guarantors' => 'integer',
+            'max_guarantors' => 'integer',
+            'requires_collateral' => 'boolean',
+            'grace_period_days' => 'integer',
+            'max_dsr_percent' => 'decimal:2',
+            'residual_value_percent' => 'decimal:2',
+            'early_settlement_allowed' => 'boolean',
+            'early_settlement_rebate_percent' => 'decimal:2',
+            'meta' => 'array',
+            'shariah_approved_at' => 'datetime',
+        ];
+    }
 
     protected $attributes = [
         'status' => 'draft',

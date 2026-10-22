@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Support;
 
 use Carbon\CarbonImmutable;
@@ -10,9 +12,10 @@ use Carbon\CarbonImmutable;
  *   old (before 2016): 9 digits + V/X   e.g. 853400937V   → YY DDD SSS C
  *   new:               12 digits         e.g. 198534000937 → YYYY DDD 0SSS C
  *
- * We always store the 12-digit form (id_number_normalized) so a customer who registered
- * with the old card and comes back with the new one is recognised as the same person.
- * The old system compared "NIC variants" in queries; here the database unique index does it.
+ * We always index the 12-digit form (the blind index customers.id_number_hash is computed from
+ * it) so a customer who registered with the old card and comes back with the new one is
+ * recognised as the same person. The old system compared "NIC variants" in queries; here the
+ * database unique index does it.
  *
  * DDD is the day of the year of birth; 500 is added for women. The NIC day count always
  * treats February as having 29 days.

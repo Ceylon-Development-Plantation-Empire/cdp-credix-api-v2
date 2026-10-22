@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\AllocationComponent;
@@ -42,27 +44,33 @@ class LoanInstallment extends Model
         'grace_ends_on',
     ];
 
-    protected $casts = [
-        'status' => InstallmentStatus::class,
-        'due_date' => 'date',
-        'grace_ends_on' => 'date',
-        'last_penalty_on' => 'date',
-        'settled_on' => 'date',
-        'principal_due' => 'decimal:2',
-        'profit_due' => 'decimal:2',
-        'charges_due' => 'decimal:2',
-        'penalty_due' => 'decimal:2',
-        'principal_paid' => 'decimal:2',
-        'profit_paid' => 'decimal:2',
-        'charges_paid' => 'decimal:2',
-        'penalty_paid' => 'decimal:2',
-        'penalty_waived' => 'decimal:2',
-        'total_due' => 'decimal:2',
-        'total_paid' => 'decimal:2',
-        'balance' => 'decimal:2',
-        'installment_no' => 'integer',
-        'schedule_version' => 'integer',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'status' => InstallmentStatus::class,
+            'due_date' => 'date',
+            'grace_ends_on' => 'date',
+            'last_penalty_on' => 'date',
+            'settled_on' => 'date',
+            'principal_due' => 'decimal:2',
+            'profit_due' => 'decimal:2',
+            'charges_due' => 'decimal:2',
+            'penalty_due' => 'decimal:2',
+            'principal_paid' => 'decimal:2',
+            'profit_paid' => 'decimal:2',
+            'charges_paid' => 'decimal:2',
+            'penalty_paid' => 'decimal:2',
+            'penalty_waived' => 'decimal:2',
+            'total_due' => 'decimal:2',
+            'total_paid' => 'decimal:2',
+            'balance' => 'decimal:2',
+            'installment_no' => 'integer',
+            'schedule_version' => 'integer',
+        ];
+    }
 
     /**
      * Lines of the schedule in force (a restructure marks the replaced lines rescheduled).

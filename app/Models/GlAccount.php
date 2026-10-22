@@ -1,8 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\GlAccountType;
+use App\Models\Concerns\Audited;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,6 +16,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class GlAccount extends Model
 {
+    use Audited;
+
     protected $fillable = [
         'code',
         'name',
@@ -22,10 +27,16 @@ class GlAccount extends Model
         'updated_by',
     ];
 
-    protected $casts = [
-        'type' => GlAccountType::class,
-        'is_active' => 'boolean',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'type' => GlAccountType::class,
+            'is_active' => 'boolean',
+        ];
+    }
 
     public function isSystem(): bool
     {

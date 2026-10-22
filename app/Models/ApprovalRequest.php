@@ -1,9 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\ApprovalAction;
 use App\Enums\ApprovalStatus;
+use App\Models\Concerns\Audited;
 use App\Models\Concerns\HasPublicId;
 use App\Support\BranchAccess;
 use Illuminate\Database\Eloquent\Builder;
@@ -13,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class ApprovalRequest extends Model
 {
+    use Audited;
     use HasPublicId;
 
     /**
@@ -28,12 +32,18 @@ class ApprovalRequest extends Model
         'requested_by',
     ];
 
-    protected $casts = [
-        'action' => ApprovalAction::class,
-        'status' => ApprovalStatus::class,
-        'payload' => 'array',
-        'decided_at' => 'datetime',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'action' => ApprovalAction::class,
+            'status' => ApprovalStatus::class,
+            'payload' => 'array',
+            'decided_at' => 'datetime',
+        ];
+    }
 
     protected $attributes = [
         'status' => 'pending',

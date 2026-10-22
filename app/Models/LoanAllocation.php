@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\AllocationComponent;
@@ -21,10 +23,16 @@ class LoanAllocation extends Model
         'amount',
     ];
 
-    protected $casts = [
-        'component' => AllocationComponent::class,
-        'amount' => 'decimal:2',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'component' => AllocationComponent::class,
+            'amount' => 'decimal:2',
+        ];
+    }
 
     protected static function booted(): void
     {

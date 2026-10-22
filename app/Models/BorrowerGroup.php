@@ -1,8 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\BorrowerGroupStatus;
+use App\Models\Concerns\Audited;
 use App\Models\Concerns\BelongsToBranch;
 use App\Models\Concerns\HasPublicId;
 use App\Models\Concerns\HasReferenceNumber;
@@ -14,6 +17,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class BorrowerGroup extends Model
 {
+    use Audited;
     use BelongsToBranch, HasPublicId, HasReferenceNumber, SoftDeletes;
 
     public const REFERENCE_PREFIX = 'GRP';
@@ -30,10 +34,16 @@ class BorrowerGroup extends Model
         'updated_by',
     ];
 
-    protected $casts = [
-        'status' => BorrowerGroupStatus::class,
-        'formed_on' => 'date',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'status' => BorrowerGroupStatus::class,
+            'formed_on' => 'date',
+        ];
+    }
 
     protected $attributes = [
         'status' => 'active',

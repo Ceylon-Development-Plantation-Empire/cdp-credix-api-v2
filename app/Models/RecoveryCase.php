@@ -1,9 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\RecoveryStage;
 use App\Enums\RecoveryStatus;
+use App\Models\Concerns\Audited;
 use App\Models\Concerns\BelongsToBranch;
 use App\Models\Concerns\HasPublicId;
 use App\Models\Concerns\HasReferenceNumber;
@@ -14,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class RecoveryCase extends Model
 {
+    use Audited;
     use BelongsToBranch, HasPublicId, HasReferenceNumber;
 
     public const REFERENCE_PREFIX = 'REC';
@@ -31,15 +35,21 @@ class RecoveryCase extends Model
         'opened_at',
     ];
 
-    protected $casts = [
-        'stage' => RecoveryStage::class,
-        'status' => RecoveryStatus::class,
-        'opened_dpd' => 'integer',
-        'opened_arrears' => 'decimal:2',
-        'opened_at' => 'datetime',
-        'assigned_at' => 'datetime',
-        'closed_at' => 'datetime',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'stage' => RecoveryStage::class,
+            'status' => RecoveryStatus::class,
+            'opened_dpd' => 'integer',
+            'opened_arrears' => 'decimal:2',
+            'opened_at' => 'datetime',
+            'assigned_at' => 'datetime',
+            'closed_at' => 'datetime',
+        ];
+    }
 
     protected $hidden = [
         'open_case_key',

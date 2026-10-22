@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\SettingType;
@@ -21,10 +23,16 @@ class Setting extends Model
         'updated_by',
     ];
 
-    protected $casts = [
-        'type' => SettingType::class,
-        'rules' => 'array',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'type' => SettingType::class,
+            'rules' => 'array',
+        ];
+    }
 
     protected static function booted(): void
     {

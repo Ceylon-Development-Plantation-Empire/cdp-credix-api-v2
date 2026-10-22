@@ -1,8 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\DocumentStatus;
+use App\Models\Concerns\Audited;
 use App\Models\Concerns\HasPublicId;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -12,6 +15,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Document extends Model
 {
+    use Audited;
     use HasPublicId, SoftDeletes;
 
     /**
@@ -32,13 +36,19 @@ class Document extends Model
         'uploaded_by',
     ];
 
-    protected $casts = [
-        'status' => DocumentStatus::class,
-        'issued_on' => 'date',
-        'expires_on' => 'date',
-        'verified_at' => 'datetime',
-        'size_bytes' => 'integer',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'status' => DocumentStatus::class,
+            'issued_on' => 'date',
+            'expires_on' => 'date',
+            'verified_at' => 'datetime',
+            'size_bytes' => 'integer',
+        ];
+    }
 
     protected $hidden = [
         'path',

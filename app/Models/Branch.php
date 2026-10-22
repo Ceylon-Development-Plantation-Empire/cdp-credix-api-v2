@@ -1,17 +1,39 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
+use App\Enums\LookupType;
+use App\Models\Concerns\Audited;
+use App\Support\Lookups\LookupAttribute;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * A branch: the unit every customer, loan, recovery case and journal belongs to.
+ *
+ * branch_type is a lookup code (main, city, satellite, mobile …) stored as branch_type_id.
+ *
+ * @property int $id
+ * @property string $name
+ * @property string $code
+ * @property string|null $branch_type
+ * @property bool $is_active
+ * @property bool $is_head_office
+ */
 class Branch extends Model
 {
+    use Audited;
     use HasFactory;
 
+    /**
+     * @var list<string>
+     */
     protected $fillable = [
         'name',
         'code',
@@ -35,16 +57,47 @@ class Branch extends Model
         'is_head_office',
     ];
 
-    protected $casts = [
-        'is_active' => 'boolean',
-        'is_head_office' => 'boolean',
-        'opening_date' => 'date',
-        'latitude' => 'decimal:8',
-        'longitude' => 'decimal:8',
-    ];
+    /**
+     * The API shows the lookup code, not its id.
+     *
+     * @var list<string>
+     */
+    protected $hidden = ['branch_type_id'];
 
     /**
-     * Scope a query to only include active branches.
+     * @var list<string>
+     */
+    protected $appends = ['branch_type'];
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'is_active' => 'boolean',
+            'is_head_office' => 'boolean',
+            'opening_date' => 'date',
+            'latitude' => 'decimal:8',
+            'longitude' => 'decimal:8',
+        ];
+    }
+
+    /**
+     * branch_type (code) ↔ branch_type_id (lookups FK).
+     *
+     * @return Attribute<string|null, string|null>
+     */
+    protected function branchType(): Attribute
+    {
+        return LookupAttribute::for($this, LookupType::BranchType, 'branch_type_id', 'branch_type');
+    }
+
+    /**
+     * Only active branches.
+     *
+     * @param  Builder<Branch>  $query
+     * @return Builder<Branch>
      */
     public function scopeActive(Builder $query): Builder
     {
@@ -52,7 +105,10 @@ class Branch extends Model
     }
 
     /**
-     * Scope a query to search branches by name, code, or city.
+     * Search by name, code or city.
+     *
+     * @param  Builder<Branch>  $query
+     * @return Builder<Branch>
      */
     public function scopeSearch(Builder $query, ?string $search): Builder
     {
@@ -68,7 +124,7 @@ class Branch extends Model
     }
 
     /**
-     * Get the group that owns the branch.
+     * @return BelongsTo<Group, $this>
      */
     public function group(): BelongsTo
     {
@@ -76,7 +132,7 @@ class Branch extends Model
     }
 
     /**
-     * Get the province associated with the branch.
+     * @return BelongsTo<Province, $this>
      */
     public function province(): BelongsTo
     {
@@ -84,7 +140,7 @@ class Branch extends Model
     }
 
     /**
-     * Get the zonal associated with the branch.
+     * @return BelongsTo<Zonal, $this>
      */
     public function zonal(): BelongsTo
     {
@@ -92,7 +148,7 @@ class Branch extends Model
     }
 
     /**
-     * Get the region associated with the branch.
+     * @return BelongsTo<Region, $this>
      */
     public function region(): BelongsTo
     {
@@ -100,7 +156,7 @@ class Branch extends Model
     }
 
     /**
-     * Get the employees working in this branch.
+     * @return HasMany<Employee, $this>
      */
     public function employees(): HasMany
     {
