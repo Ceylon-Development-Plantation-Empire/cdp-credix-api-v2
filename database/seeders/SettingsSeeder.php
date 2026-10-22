@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Database\Seeders;
 
 use App\Enums\SettingType;
@@ -96,6 +98,16 @@ class SettingsSeeder extends Seeder
                 'Wrong OTP attempts allowed', null],
             ['otp.max_sends', 'security', SettingType::Integer, '3', ['value' => 'required|integer|min:1|max:10'],
                 'OTP resends allowed', null],
+
+            /* Staff sign-in */
+            ['security.login_max_attempts', 'security', SettingType::Integer, '10', ['value' => 'required|integer|min:3|max:50'],
+                'Wrong passwords before an account locks', 'Counted across minutes; the per-minute login limit applies on top.'],
+            ['security.login_lockout_minutes', 'security', SettingType::Integer, '15', ['value' => 'required|integer|min:1|max:1440'],
+                'Account lock duration (minutes)', 'How long sign-in is refused after too many wrong passwords.'],
+            ['security.staff_login_otp', 'security', SettingType::Boolean, '0', ['value' => 'required|boolean'],
+                'SMS code at staff sign-in (2FA)', 'When on, staff and admins also enter a code sent to their mobile. Check every user has a mobile first.'],
+            ['security.force_password_change', 'security', SettingType::Boolean, '0', ['value' => 'required|boolean'],
+                'Force a new password after a reset', 'When on, a user whose password was set by an administrator can only change it before using the system.'],
 
             /* Notifications */
             ['notifications.due_reminder_days', 'notifications', SettingType::Integer, '3', ['value' => 'required|integer|min:0|max:30'],

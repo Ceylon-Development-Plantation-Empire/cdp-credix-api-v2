@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
@@ -109,6 +111,14 @@ class PermissionsSeeder extends Seeder
             /* System Settings */
             ['name' => 'Setting Index', 'group_name' => 'System Settings Permissions'],
             ['name' => 'Setting Update', 'group_name' => 'System Settings Permissions'],
+            // Code lists (banks, categories, relationships, branch / employee types, custom fields).
+            ['name' => 'Lookup Index', 'group_name' => 'System Settings Permissions'],
+            ['name' => 'Lookup Manage', 'group_name' => 'System Settings Permissions'],
+            // Fee and charge types used by products.
+            ['name' => 'Charge Type Index', 'group_name' => 'Product Catalogue Permissions'],
+            ['name' => 'Charge Type Manage', 'group_name' => 'Product Catalogue Permissions'],
+            ['name' => 'Lending Margin Index', 'group_name' => 'Product Catalogue Permissions'],
+            ['name' => 'Lending Margin Manage', 'group_name' => 'Product Catalogue Permissions'],
 
             /* Product Catalogue */
             ['name' => 'Product Category Index', 'group_name' => 'Product Catalogue Permissions'],
@@ -234,14 +244,16 @@ class PermissionsSeeder extends Seeder
         ];
 
         foreach ($permissions as $permission) {
-            Permission::firstOrCreate([
-                'name' => $permission['name'],
-                'group_name' => $permission['group_name'],
-                'guard_name' => 'api',
-            ]);
+            // Found by name (what the code checks); the group is only a label and may be regrouped.
+            Permission::updateOrCreate(
+                ['name' => $permission['name'], 'guard_name' => 'api'],
+                ['group_name' => $permission['group_name']],
+            );
         }
 
+        // The Super Admin role always holds every permission and cannot be renamed or deleted.
         $role = Role::firstOrCreate(['guard_name' => 'api', 'name' => 'Super Admin']);
+        $role->forceFill(['is_protected' => true])->save();
 
         $allPermissions = Permission::all();
         $role->syncPermissions($allPermissions);
