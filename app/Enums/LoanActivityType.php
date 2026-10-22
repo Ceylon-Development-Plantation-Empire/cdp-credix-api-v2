@@ -15,4 +15,8 @@ enum LoanActivityType: string
 
     // Parties, collateral and consents changing on an application.
     case Update = 'update';
+
+    // A customer asks, on the review link, for a detail to be corrected; an officer answers it.
+    case CorrectionRequest = 'correction_request';
+    case CorrectionResolved = 'correction_resolved';
 }

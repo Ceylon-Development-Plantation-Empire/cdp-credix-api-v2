@@ -15,6 +15,7 @@ enum NotificationEvent: string
 {
     case LoanApproved = 'loan.approved';
     case LoanRejected = 'loan.rejected';
+    case LoanReviewLink = 'loan.review-link';
     case LoanDisbursed = 'loan.disbursed';
     case PaymentReceived = 'payment.received';
     case LoanSettled = 'loan.settled';
@@ -33,6 +34,7 @@ enum NotificationEvent: string
         return [...$common, ...match ($this) {
             self::LoanApproved => ['application_no', 'amount', 'installment_amount', 'tenure'],
             self::LoanRejected => ['application_no'],
+            self::LoanReviewLink => ['application_no', 'review_link', 'valid_hours'],
             self::LoanDisbursed => ['loan_no', 'amount', 'net_amount', 'installment_amount', 'first_due_date'],
             self::PaymentReceived => ['loan_no', 'amount', 'txn_no', 'outstanding'],
             self::LoanSettled => ['loan_no'],

@@ -69,6 +69,7 @@ class Loan extends Model
             'repayment_frequency' => RepaymentFrequency::class,
             'status' => LoanStatus::class,
             'closure_reason' => ClosureReason::class,
+            'offer_on_hold_at' => 'datetime',
             'rate' => 'decimal:4',
             'tenure' => 'integer',
             'requested_amount' => 'decimal:2',
@@ -229,6 +230,11 @@ class Loan extends Model
     public function guarantors(): HasMany
     {
         return $this->hasMany(LoanParty::class)->where('role', PartyRole::Guarantor->value);
+    }
+
+    public function legalDocuments(): HasMany
+    {
+        return $this->hasMany(LegalDocument::class);
     }
 
     public function collaterals(): HasMany

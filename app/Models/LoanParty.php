@@ -26,6 +26,12 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $consented_at
  * @property Carbon|null $invoked_at
  * @property Carbon|null $released_at
+ * @property Carbon|null $review_sent_at
+ * @property Carbon|null $review_expires_at
+ * @property Carbon|null $review_viewed_at
+ * @property Carbon|null $review_confirmed_at
+ * @property string|null $review_confirmed_via
+ * @property string|null $review_reason
  */
 class LoanParty extends Model
 {
@@ -54,6 +60,8 @@ class LoanParty extends Model
      */
     protected $hidden = [
         'consent_hash',
+        'review_token_hash',
+        'review_hash',
         'open_loan_key',
         'relationship_id',
     ];
@@ -68,6 +76,10 @@ class LoanParty extends Model
             'consented_at' => 'datetime',
             'invoked_at' => 'datetime',
             'released_at' => 'datetime',
+            'review_sent_at' => 'datetime',
+            'review_expires_at' => 'datetime',
+            'review_viewed_at' => 'datetime',
+            'review_confirmed_at' => 'datetime',
         ];
     }
 

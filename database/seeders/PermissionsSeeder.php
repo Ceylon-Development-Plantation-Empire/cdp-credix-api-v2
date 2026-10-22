@@ -117,8 +117,6 @@ class PermissionsSeeder extends Seeder
             // Fee and charge types used by products.
             ['name' => 'Charge Type Index', 'group_name' => 'Product Catalogue Permissions'],
             ['name' => 'Charge Type Manage', 'group_name' => 'Product Catalogue Permissions'],
-            ['name' => 'Lending Margin Index', 'group_name' => 'Product Catalogue Permissions'],
-            ['name' => 'Lending Margin Manage', 'group_name' => 'Product Catalogue Permissions'],
 
             /* Product Catalogue */
             ['name' => 'Product Category Index', 'group_name' => 'Product Catalogue Permissions'],
@@ -190,6 +188,9 @@ class PermissionsSeeder extends Seeder
             ['name' => 'Loan Collateral Verify', 'group_name' => 'Loan Decision Permissions'],
             // The amount a user can approve also needs roles.max_approval_amount on one of their roles.
             ['name' => 'Loan Approve', 'group_name' => 'Loan Decision Permissions'],
+            // Special approval: more than was asked for, a longer term, or outside the product's limits, for one
+            // application at a time (needs the flag special_approval and a written reason).
+            ['name' => 'Loan Approve Special', 'group_name' => 'Loan Decision Permissions'],
             ['name' => 'Loan Reject', 'group_name' => 'Loan Decision Permissions'],
 
             /* Loan operations */
@@ -222,6 +223,13 @@ class PermissionsSeeder extends Seeder
             ['name' => 'Recovery Case Assign', 'group_name' => 'Recovery Permissions'],
             // Internal recovery agent: records calls, visits and promises to pay.
             ['name' => 'Recovery Case Work', 'group_name' => 'Recovery Permissions'],
+
+            /* Legal documents */
+            ['name' => 'Legal Document Index', 'group_name' => 'Legal Permissions'],
+            // Prepares, prints and deletes (unprinted) legal documents of loans.
+            ['name' => 'Legal Document Manage', 'group_name' => 'Legal Permissions'],
+            // Writes the wording (templates) of the legal documents.
+            ['name' => 'Legal Template Manage', 'group_name' => 'Legal Permissions'],
 
             /* Notifications */
             ['name' => 'Template Index', 'group_name' => 'Notification Permissions'],

@@ -99,6 +99,20 @@ class SettingsSeeder extends Seeder
             ['otp.max_sends', 'security', SettingType::Integer, '3', ['value' => 'required|integer|min:1|max:10'],
                 'OTP resends allowed', null],
 
+            /* Dashboard targets (0 = no target) */
+            ['dashboard.target.disbursement', 'dashboard', SettingType::Decimal, '0', ['value' => 'required|numeric|min:0|max:100000000000'],
+                'Monthly disbursement target (Rs)', 'Shown on the dashboard against what was paid out; a longer period scales it by the number of months. 0 = no target.'],
+            ['dashboard.target.collection', 'dashboard', SettingType::Decimal, '0', ['value' => 'required|numeric|min:0|max:100000000000'],
+                'Monthly collection target (Rs)', 'Shown on the dashboard against what was collected; a longer period scales it. 0 = no target.'],
+            ['dashboard.target.approval_rate', 'dashboard', SettingType::Decimal, '0', ['value' => 'required|numeric|min:0|max:100'],
+                'Approval rate target (%)', 'Approved ÷ (approved + rejected) in the period. 0 = no target.'],
+
+            /* Customer review link */
+            ['loan_review.link_validity_hours', 'loans', SettingType::Integer, '48', ['value' => 'required|integer|min:1|max:720'],
+                'Review link valid for (hours)', 'How long the SMS link where the customer checks and confirms their details stays open.'],
+            ['loan_review.required_before_disbursement', 'loans', SettingType::Boolean, '0', ['value' => 'required|boolean'],
+                'Customer review needed to disburse', 'When on, a loan is not disbursed until every borrower has confirmed the review link (or an officer confirmed it with them).'],
+
             /* Staff sign-in */
             ['security.login_max_attempts', 'security', SettingType::Integer, '10', ['value' => 'required|integer|min:3|max:50'],
                 'Wrong passwords before an account locks', 'Counted across minutes; the per-minute login limit applies on top.'],
@@ -129,6 +143,27 @@ class SettingsSeeder extends Seeder
                 'Points for a late installment', 'Deducted for each installment paid after its grace period.'],
             ['credit_score.points_missed', 'credit_score', SettingType::Integer, '10', ['value' => 'required|integer|min:0|max:100'],
                 'Points for an unpaid installment', 'Deducted for each installment still unpaid after its grace period.'],
+
+            /* Frontend Form Lists (Bank list, group loan competency and service charge) */
+            ['customer_bank_list', 'customers', SettingType::Json, json_encode([
+                'Amana Bank', 'Bank of Ceylon', 'Bank of China', 'Cargills Bank', 'Citibank N.A.',
+                'Commercial Bank of Ceylon', 'DFCC Bank', 'Deutsche Bank AG', 'HDFC Bank', 'HSBC',
+                'Habib Bank', 'Hatton National Bank', 'Indian Bank', 'Indian Overseas Bank',
+                'MCB Bank', 'National Development Bank', 'National Savings Bank', 'Nations Trust Bank',
+                'Pan Asia Banking Corporation', "People's Bank", 'Pradeshiya Sanwardhana Bank',
+                'Public Bank Berhad', 'Sampath Bank', 'Sanasa Development Bank', 'Seylan Bank',
+                'Standard Chartered Bank', 'State Bank of India', 'State Mortgage and Investment Bank',
+                'Union Bank of Colombo',
+            ]), ['value' => 'required'],
+                'Customer Bank List', 'Available Sri Lankan licensed commercial and specialised banks for disbursement.'],
+            ['group_loan_competency', 'loans', SettingType::Json, json_encode([
+                'Agriculture & Farming', 'Retail & Wholesale Trade', 'Fisheries & Livestock',
+                'Handicrafts & Textiles', 'Food Processing & Bakeries', 'Transport & Delivery Services',
+                'Personal & Commercial Services', 'Construction & Masonry', 'Small Manufacturing',
+            ]), ['value' => 'required'],
+                'Group Loan Member Competencies', 'Business activity categories for group loan competency appraisal.'],
+            ['group_loan_service_charge_percentage', 'loans', SettingType::Decimal, '2.50', ['value' => 'required|numeric|min:0|max:100'],
+                'Group Loan Service Charge (%)', 'Default service charge percentage for group microfinance loans.'],
         ];
 
         foreach ($settings as [$key, $group, $type, $value, $rules, $label, $description]) {
