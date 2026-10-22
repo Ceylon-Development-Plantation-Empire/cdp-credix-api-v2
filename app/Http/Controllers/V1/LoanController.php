@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\V1;
 
 use App\Enums\LoanActivityType;
+use App\Enums\PartyRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Loans\CreateLoanRequest;
 use App\Http\Requests\Loans\LoanRemarksRequest;
@@ -13,6 +14,7 @@ use App\Http\Resources\Loans\LoanActivityResource;
 use App\Http\Resources\Loans\LoanInstallmentResource;
 use App\Http\Resources\Loans\LoanListResource;
 use App\Http\Resources\Loans\LoanResource;
+use App\Models\Customer;
 use App\Models\Loan;
 use App\Services\Loans\LoanApplicationService;
 use App\Services\Loans\LoanChecklistService;
@@ -65,6 +67,32 @@ class LoanController extends Controller implements HasMiddleware
 
             if ($request->filled('product_slug')) {
                 $query->whereHas('product', fn ($q) => $q->where('slug', $request->product_slug));
+            }
+
+            // One customer's loans (Customer 360): as borrower or co-borrower, as a member of a group loan,
+            // and as a guarantor. ?role=borrower or ?role=guarantor narrows it; each row says which role the
+            // customer plays (customer_role). A customer outside the user's branch is not found (branch
+            // scope), so the list is simply empty.
+            if ($request->filled('customer_public_id')) {
+                $customerId = Customer::where('public_id', (string) $request->customer_public_id)->value('id') ?? 0;
+                $role = (string) $request->input('role', 'any');
+
+                $query->where(function ($q) use ($customerId, $role) {
+                    if ($role !== 'guarantor') {
+                        $q->where(fn ($b) => $b
+                            ->whereHas('parties', fn ($p) => $p->where('customer_id', $customerId)->whereIn('role', PartyRole::borrowingValues()))
+                            ->orWhereHas('memberLoans.parties', fn ($p) => $p->where('customer_id', $customerId)));
+                    }
+
+                    if ($role !== 'borrower') {
+                        $q->orWhereHas('parties', fn ($p) => $p->where('customer_id', $customerId)->where('role', PartyRole::Guarantor->value));
+                    }
+                });
+
+                $query->with([
+                    'parties' => fn ($p) => $p->where('customer_id', $customerId),
+                    'memberLoans.parties' => fn ($p) => $p->where('customer_id', $customerId),
+                ]);
             }
 
             return response()->json([
@@ -240,7 +268,6 @@ class LoanController extends Controller implements HasMiddleware
             'parties.customer',
             'memberLoans.parties.customer',
             'collaterals.owner',
-            'collaterals.lendingMarginPlan',
         ]);
     }
 }

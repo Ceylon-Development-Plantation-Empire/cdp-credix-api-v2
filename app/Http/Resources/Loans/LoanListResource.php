@@ -35,10 +35,24 @@ class LoanListResource extends JsonResource
             ] : null),
             'product' => $this->whenLoaded('product', fn () => ['slug' => $this->product->slug, 'name' => $this->product->name]),
             'branch' => $this->whenLoaded('branch', fn () => ['id' => $this->branch->id, 'name' => $this->branch->name]),
+            // The role the customer asked about plays on this loan; only when the list is filtered by customer.
+            'customer_role' => $this->whenLoaded('parties', fn () => $this->customerRole()),
             'amount' => $this->decisionAmount(),
             'status' => $this->status->value,
             'days_past_due' => $this->days_past_due,
             'created_at' => $this->created_at?->toApiString(),
         ];
+    }
+
+    /**
+     * borrower / co_borrower / guarantor from the customer's own party on the loan, or group_member
+     * when they sit on one of the group facility's member loans.
+     */
+    protected function customerRole(): ?string
+    {
+        $party = $this->parties->first()
+            ?? ($this->relationLoaded('memberLoans') ? $this->memberLoans->flatMap->parties->first() : null);
+
+        return $party?->role->value;
     }
 }
