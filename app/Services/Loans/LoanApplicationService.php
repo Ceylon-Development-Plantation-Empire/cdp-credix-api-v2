@@ -292,7 +292,8 @@ class LoanApplicationService
             'branch_id' => $group->branch_id,
             'borrower_type' => BorrowerType::Group,
             'borrower_group_id' => $group->id,
-            'requested_amount' => '0',
+            // The facility row is inserted before its member loans exist, and the amount check needs > 0.
+            'requested_amount' => (string) Money::sum(array_column($data['members'], 'amount')),
             'tenure' => $tenure,
             'purpose' => $data['purpose'] ?? null,
             'meta' => $data['meta'] ?? null,
