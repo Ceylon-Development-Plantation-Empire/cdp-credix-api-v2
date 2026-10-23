@@ -173,37 +173,6 @@ class LoanWorkflowService
     }
 
     /**
-     * Who moved the loan into a status most recently (the reviewer, verifier, approver …).
-     */
-    public function performerOf(Loan $loan, LoanStatus $status): ?int
-    {
-        return LoanActivity::query()
-            ->where('loan_id', $loan->id)
-            ->where('type', LoanActivityType::StatusChange->value)
-            ->where('to_status', $status->value)
-            ->latest('id')
-            ->value('performed_by');
-    }
-
-    /**
-     * Maker-checker (rule L-5): the user must not have done any of the given earlier steps.
-     *
-     * @param  array<string, LoanStatus>  $steps  label => status reached by that step
-     */
-    public function assertSegregation(Loan $loan, User $user, array $steps): void
-    {
-        if (! Setting::segregationEnforced()) {
-            return;
-        }
-
-        foreach ($steps as $label => $status) {
-            if ($this->performerOf($loan, $status) === $user->id) {
-                throw new BusinessRuleException('SEGREGATION_OF_DUTIES', "You {$label} this loan, so another person must do this step.", 403);
-            }
-        }
-    }
-
-    /**
      * A free-text entry on the timeline (notes, document checks, party changes …).
      *
      * @param  array<string, mixed>  $metadata

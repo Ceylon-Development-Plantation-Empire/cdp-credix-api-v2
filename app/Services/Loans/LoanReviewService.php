@@ -48,7 +48,6 @@ class LoanReviewService
         return DB::transaction(function () use ($loan, $by) {
             $loan = $this->workflow->lock($loan);
             $this->assertMove($loan, LoanStatus::InReview);
-            $this->workflow->assertSegregation($loan, $by, ['submitted' => LoanStatus::Submitted]);
 
             return $this->workflow->transition($loan, LoanStatus::InReview, $by);
         }, attempts: 3);
@@ -69,7 +68,6 @@ class LoanReviewService
         return DB::transaction(function () use ($loan, $remarks, $by) {
             $loan = $this->workflow->lock($loan);
             $this->assertMove($loan, LoanStatus::Verified);
-            $this->workflow->assertSegregation($loan, $by, ['reviewed' => LoanStatus::InReview]);
 
             $borrowingLoans = $this->applications->borrowingLoans($loan);
             $amounts = $borrowingLoans->mapWithKeys(fn (Loan $each) => [$each->id => (string) $each->requested_amount])->all();
@@ -93,11 +91,6 @@ class LoanReviewService
         return DB::transaction(function () use ($loan, $data, $by) {
             $loan = $this->workflow->lock($loan);
             $this->assertMove($loan, LoanStatus::Approved);
-            $this->workflow->assertSegregation($loan, $by, [
-                'submitted' => LoanStatus::Submitted,
-                'reviewed' => LoanStatus::InReview,
-                'verified' => LoanStatus::Verified,
-            ]);
 
             $terms = $this->pricing->termsOf($loan);
             $rate = BigDecimal::of($data['rate'] ?? $loan->rate);

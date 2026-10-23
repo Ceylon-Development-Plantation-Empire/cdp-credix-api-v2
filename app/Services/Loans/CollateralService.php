@@ -156,10 +156,6 @@ class CollateralService
                 throw new BusinessRuleException('COLLATERAL_NOT_PROPOSED', 'Only a proposed collateral can be verified.', 409);
             }
 
-            if ($collateral->created_by === $by->id && Setting::segregationEnforced()) {
-                throw new BusinessRuleException('SELF_VERIFICATION_NOT_ALLOWED', 'Collateral must be verified by someone other than the person who recorded it.', 403);
-            }
-
             $missing = $this->missingDocuments($collateral);
 
             if ($missing) {

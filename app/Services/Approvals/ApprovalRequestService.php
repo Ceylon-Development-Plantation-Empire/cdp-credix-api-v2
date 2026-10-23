@@ -148,10 +148,6 @@ class ApprovalRequestService
             $request = ApprovalRequest::whereKey($request->id)->lockForUpdate()->firstOrFail();
             $this->assertPending($request);
 
-            if ($request->requested_by === $approver->id && Setting::segregationEnforced()) {
-                throw new BusinessRuleException('SELF_APPROVAL_NOT_ALLOWED', 'You cannot decide a request you made yourself.', 403);
-            }
-
             if (! $approver->can($request->action->permission())) {
                 throw new BusinessRuleException('APPROVAL_PERMISSION_REQUIRED', 'You do not have permission to decide this request.', 403, [
                     'required' => $request->action->permission(),

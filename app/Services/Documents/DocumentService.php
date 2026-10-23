@@ -221,15 +221,11 @@ class DocumentService
     }
 
     /**
-     * A document is verified by someone other than the person who uploaded it.
+     * Verify a document (the Document Verify permission decides who may).
      */
     public function verify(Document $document, User $user): Document
     {
         $this->assertPending($document);
-
-        if ($document->uploaded_by === $user->id && Setting::segregationEnforced()) {
-            throw new BusinessRuleException('SELF_VERIFICATION_NOT_ALLOWED', 'A document must be verified by someone other than the person who uploaded it.', 403);
-        }
 
         $document->forceFill([
             'status' => DocumentStatus::Verified,

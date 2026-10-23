@@ -29,7 +29,6 @@ use Illuminate\Support\Facades\DB;
  *
  * Before any money moves:
  * - the loan is accepted, and every borrower's OTP acceptance still matches the approved terms;
- * - the person disbursing did not approve the loan;
  * - every collateral is perfected (bond registered, CR endorsed, gold in the vault);
  * - every borrower confirmed their details and the terms on the review link (OTP), or with an officer, and
  *   nothing changed since. This replaces the signed paper agreement.
@@ -70,7 +69,6 @@ class DisbursementService
                 throw new BusinessRuleException('LOAN_INVALID_TRANSITION', 'Only an accepted loan can be disbursed.', 409);
             }
 
-            $this->workflow->assertSegregation($loan, $by, ['approved' => LoanStatus::Approved]);
             $this->assertReadyToDisburse($loan, $borrowingLoans);
 
             $terms = $this->pricing->termsOf($loan);

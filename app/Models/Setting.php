@@ -43,15 +43,6 @@ class Setting extends Model
     }
 
     /**
-     * Whether "someone else must do this step" rules apply (loan review/verify/approve/disburse,
-     * documents, collateral, approval requests). Off by default: the permission alone decides who can act.
-     */
-    public static function segregationEnforced(): bool
-    {
-        return (bool) self::value('approval.segregation_enabled', false);
-    }
-
-    /**
      * Read a setting as its typed PHP value.
      *
      * Usage: Setting::value('guarantor.max_active_guarantees', 2)
