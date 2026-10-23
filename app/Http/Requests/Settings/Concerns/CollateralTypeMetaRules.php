@@ -52,6 +52,8 @@ trait CollateralTypeMetaRules
             }],
             'meta.documents' => ['sometimes', 'array', 'max:20'],
             'meta.documents.*' => ['string', 'distinct', Rule::exists('document_types', 'slug')->where('target', DocumentTarget::Collateral->value)],
+            'meta.optional_documents' => ['sometimes', 'array', 'max:20'],
+            'meta.optional_documents.*' => ['string', 'distinct', 'not_in:'.implode(',', (array) $this->input('meta.documents', [])), Rule::exists('document_types', 'slug')->where('target', DocumentTarget::Collateral->value)],
         ];
     }
 }

@@ -42,9 +42,11 @@ class DocumentChecklistService
             $items = $rows->map(fn (DocumentRequirement $row) => $this->evaluate($row, $documents->get($row->document_type_id, collect())));
             $rule = $rows->first()->rule;
 
+            // "any": one document of the group is enough. "all": every MANDATORY document of the group is needed; an
+            // optional one in the same group is welcome but never holds the application back.
             $satisfied = $rule === RequirementRule::Any
                 ? $items->contains('satisfied', true)
-                : $items->every(fn ($item) => $item['satisfied']);
+                : $items->where('is_mandatory', true)->every(fn ($item) => $item['satisfied']);
 
             return [
                 'requirement_group' => $group,
@@ -92,6 +94,7 @@ class DocumentChecklistService
 
         return [
             'document_type' => ['slug' => $row->documentType->slug, 'name' => $row->documentType->name],
+            'is_mandatory' => $row->is_mandatory,
             'min_count' => $row->min_count,
             'verified_count' => $verified,
             'pending_count' => $pending,

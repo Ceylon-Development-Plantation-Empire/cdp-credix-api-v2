@@ -55,7 +55,8 @@ final class CollateralTypes
                     'extent' => ['nullable', 'string', 'max:50'],
                     'address' => ['nullable', 'string', 'max:255'],
                 ],
-                'documents' => ['property-deed', 'valuation-report'],
+                'documents' => ['property-deed'],
+                'optional_documents' => ['valuation-report'],
             ],
         ],
         'vehicle' => [
@@ -71,7 +72,8 @@ final class CollateralTypes
                     'model' => ['nullable', 'string', 'max:50'],
                     'year' => ['nullable', 'integer', 'min:1950', 'max:next_year'],
                 ],
-                'documents' => ['vehicle-cr', 'valuation-report'],
+                'documents' => ['vehicle-cr'],
+                'optional_documents' => ['valuation-report'],
             ],
         ],
         'gold' => [
@@ -173,6 +175,14 @@ final class CollateralTypes
     }
 
     /**
+     * @return list<string> document type slugs that may be added but are not required
+     */
+    public function optionalDocuments(string $code): array
+    {
+        return array_values(array_filter((array) ($this->meta($code)['optional_documents'] ?? []), 'is_string'));
+    }
+
+    /**
      * Codes of every type valued by gold weight (safekeeping fees and gold renewal read these).
      *
      * @return list<string>
@@ -227,6 +237,7 @@ final class CollateralTypes
                 'required' => in_array('required', $rules, true),
             ], $this->fieldRules($code)),
             'documents' => $this->documents($code),
+            'optional_documents' => $this->optionalDocuments($code),
         ];
     }
 

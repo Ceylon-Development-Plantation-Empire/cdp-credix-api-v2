@@ -28,8 +28,8 @@ class DocumentRequirementSeeder extends Seeder
             // Employment
             ['salary-confirmation-letter', 'Salary confirmation letter', DocumentTarget::Person, 90],
             ['employment-letter', 'Employment letter', DocumentTarget::Person, 180],
-            ['salary-slip', 'Salary slip', DocumentTarget::Person, 120],
-            ['bank-statement', 'Bank statement', DocumentTarget::Person, 210],
+            ['salary-slip', 'Salary slips (last 3 months, one PDF)', DocumentTarget::Person, 120],
+            ['bank-statement', 'Bank statements (last 6 months, one PDF)', DocumentTarget::Person, 210],
             // Other
             ['billing-proof', 'Billing proof', DocumentTarget::Person, 90],
             ['customer-photo', 'Customer photograph', DocumentTarget::Person, null],
@@ -62,16 +62,18 @@ class DocumentRequirementSeeder extends Seeder
                 $rules[] = [$role, null, 'identity-proof', 'any', $doc, 1, true];
             }
 
-            // B. Address and residency – both
+            // B. Address and residency – welcome, not required (the business can tick them as mandatory)
             foreach (['gn-confirmation-letter', 'ds-confirmation-letter'] as $doc) {
-                $rules[] = [$role, null, 'residency-proof', 'all', $doc, 1, true];
+                $rules[] = [$role, null, 'residency-proof', 'all', $doc, 1, false];
             }
 
-            // C. Employment
-            $rules[] = [$role, 'employed', 'employment-proof', 'all', 'salary-confirmation-letter', 1, true];
+            // C. Employment: the employment letter and the last three months' salary slips (one PDF) are
+            // needed; the salary confirmation letter is optional. A self-employed borrower gives bank statements
+            // (six months, one PDF).
             $rules[] = [$role, 'employed', 'employment-proof', 'all', 'employment-letter', 1, true];
-            $rules[] = [$role, 'employed', 'employment-proof', 'all', 'salary-slip', 3, true];
-            $rules[] = [$role, 'self_employed', 'employment-proof', 'all', 'bank-statement', 6, true];
+            $rules[] = [$role, 'employed', 'employment-proof', 'all', 'salary-slip', 1, true];
+            $rules[] = [$role, 'employed', 'employment-proof', 'all', 'salary-confirmation-letter', 1, false];
+            $rules[] = [$role, 'self_employed', 'employment-proof', 'all', 'bank-statement', 1, true];
 
             // D. Other documents that may be collected
             foreach (['billing-proof', 'customer-photo', 'other-supporting-document'] as $doc) {
@@ -79,15 +81,15 @@ class DocumentRequirementSeeder extends Seeder
             }
         }
 
-        // Guarantor: identity and employment only (no residency letters)
+        // Guarantor: only the identity proof is required; the employment documents are optional.
         foreach (['nic-copy', 'passport-copy', 'driving-licence-copy'] as $doc) {
             $rules[] = ['guarantor', null, 'identity-proof', 'any', $doc, 1, true];
         }
 
-        $rules[] = ['guarantor', 'employed', 'employment-proof', 'all', 'salary-confirmation-letter', 1, true];
-        $rules[] = ['guarantor', 'employed', 'employment-proof', 'all', 'employment-letter', 1, true];
-        $rules[] = ['guarantor', 'employed', 'employment-proof', 'all', 'salary-slip', 3, true];
-        $rules[] = ['guarantor', 'self_employed', 'employment-proof', 'all', 'bank-statement', 6, true];
+        $rules[] = ['guarantor', 'employed', 'employment-proof', 'all', 'salary-confirmation-letter', 1, false];
+        $rules[] = ['guarantor', 'employed', 'employment-proof', 'all', 'employment-letter', 1, false];
+        $rules[] = ['guarantor', 'employed', 'employment-proof', 'all', 'salary-slip', 1, false];
+        $rules[] = ['guarantor', 'self_employed', 'employment-proof', 'all', 'bank-statement', 1, false];
 
         foreach ($rules as [$role, $employment, $group, $rule, $doc, $minCount, $mandatory]) {
             DocumentRequirement::firstOrCreate([

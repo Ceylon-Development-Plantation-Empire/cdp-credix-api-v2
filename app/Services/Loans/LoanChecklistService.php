@@ -55,6 +55,7 @@ class LoanChecklistService
                     'public_id' => $collateral->public_id,
                     'type' => $collateral->type,
                     'missing_documents' => $missing,
+                    'optional_documents' => $this->collaterals->optionalDocuments($collateral),
                     'complete' => $missing === [],
                 ];
             });

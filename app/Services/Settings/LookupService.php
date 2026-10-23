@@ -94,6 +94,7 @@ class LookupService
             'reference' => $meta['reference'] ?? ($valuation === CollateralValuation::GoldWeight ? CollateralReference::Custody : CollateralReference::Registration)->value,
             'fields' => (object) ($meta['fields'] ?? []),
             'documents' => array_values($meta['documents'] ?? []),
+            'optional_documents' => array_values(array_diff($meta['optional_documents'] ?? [], $meta['documents'] ?? [])),
         ];
     }
 }

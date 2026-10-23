@@ -242,6 +242,19 @@ class CollateralService
         return array_values(array_diff($this->types->documents($collateral->type), $verified->all()));
     }
 
+    /**
+     * Documents the collateral may have but does not need, with the ones already verified left out.
+     *
+     * @return list<string> slugs of document types
+     */
+    public function optionalDocuments(Collateral $collateral): array
+    {
+        $verified = $collateral->documents()->where('status', DocumentStatus::Verified->value)
+            ->with('documentType')->get()->pluck('documentType.slug')->unique();
+
+        return array_values(array_diff($this->types->optionalDocuments($collateral->type), $verified->all()));
+    }
+
     protected function assertChangeWindow(Loan $loan): void
     {
         if ($loan->isMemberLoan()) {
