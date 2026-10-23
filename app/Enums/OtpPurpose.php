@@ -20,4 +20,7 @@ enum OtpPurpose: string
 
     // Second step of a staff sign-in (only while setting security.staff_login_otp is on).
     case StaffLogin = 'staff_login';
+
+    // A staff member who forgot their password proves it is them with a code sent to their mobile.
+    case PasswordReset = 'password_reset';
 }

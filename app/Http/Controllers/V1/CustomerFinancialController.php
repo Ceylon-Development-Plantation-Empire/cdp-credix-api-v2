@@ -6,10 +6,16 @@ namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Customers\CustomerFinancialRequest;
+use App\Http\Resources\Customers\CustomerFinancialListResource;
 use App\Http\Resources\Customers\CustomerFinancialResource;
+use App\Enums\FinancialKind;
+use App\Enums\LookupType;
 use App\Models\Customer;
+use App\Models\CustomerFinancial;
+use App\Support\Lookups\LookupRegistry;
 use App\Traits\ActivityLogTrait;
 use App\Traits\HandlesApiErrors;
+use App\Traits\PaginatesResources;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
@@ -20,15 +26,61 @@ use Illuminate\Routing\Controllers\Middleware;
  */
 class CustomerFinancialController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait, HandlesApiErrors;
+    use ActivityLogTrait, HandlesApiErrors, PaginatesResources;
 
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Customer Index', only: ['index']),
+            new Middleware('permission:Customer Index', only: ['index', 'all']),
             new Middleware('permission:Customer Financial Manage', only: ['store', 'update', 'destroy']),
             new Middleware('permission:Customer Financial Verify', only: ['verify']),
         ];
+    }
+
+    /**
+     * Lines across customers (the branch scope still applies): ?kind=asset&category=vehicle gives every asset
+     * of that category, for the fixed and moving asset screens.
+     */
+    public function all(Request $request)
+    {
+        try {
+            $query = CustomerFinancial::query()->with('customer')->latest('id');
+
+            $query->when($request->filled('kind'), fn ($q) => $q->where('kind', $request->kind));
+            $query->when($request->filled('is_verified'), fn ($q) => $q->where('is_verified', $request->boolean('is_verified')));
+            $query->when($request->filled('customer_public_id'), fn ($q) => $q->whereHas('customer', fn ($c) => $c->where('public_id', $request->customer_public_id)));
+            $query->when($request->filled('search'), fn ($q) => $q->where(fn ($w) => $w
+                ->where('description', 'like', "%{$request->search}%")
+                ->orWhere('institution_name', 'like', "%{$request->search}%")
+                ->orWhere('reference_no', 'like', "%{$request->search}%")
+                ->orWhereHas('customer', fn ($c) => $c->search((string) $request->search))));
+
+            if ($request->filled('category')) {
+                $query->whereIn('category_id', $this->categoryIds((string) $request->category, $request->input('kind')));
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Customer financials retrieved successfully',
+                'data' => $this->paginated($query->paginate($this->perPage($request)), CustomerFinancialListResource::class),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to retrieve customer financials', $th);
+        }
+    }
+
+    /**
+     * The lookup ids a category code has: each kind keeps its own list, so a code can exist in more than one.
+     *
+     * @return list<int>
+     */
+    protected function categoryIds(string $code, ?string $kind): array
+    {
+        $kinds = $kind !== null && FinancialKind::tryFrom($kind) ? [FinancialKind::from($kind)] : FinancialKind::cases();
+
+        return collect($kinds)
+            ->flatMap(fn (FinancialKind $k) => app(LookupRegistry::class)->values(LookupType::forFinancialKind($k)))
+            ->where('code', $code)->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
     }
 
     public function index(Request $request, string $publicId)

@@ -34,6 +34,7 @@ use App\Http\Controllers\V1\GlJournalController;
 use App\Http\Controllers\V1\GlReportController;
 use App\Http\Controllers\V1\GoldLoanRenewalController;
 use App\Http\Controllers\V1\GroupController;
+use App\Http\Controllers\V1\GuarantorController;
 use App\Http\Controllers\V1\ImportController;
 use App\Http\Controllers\V1\LegalDocumentController;
 use App\Http\Controllers\V1\LegalTemplateController;
@@ -72,6 +73,9 @@ Route::prefix('v1')->group(function () {
     Route::post('login', [AuthController::class, 'login'])->middleware('throttle:login');
     // Second step while SMS 2FA is switched on (setting security.staff_login_otp).
     Route::post('login/verify-otp', [AuthController::class, 'verifyOtp'])->middleware('throttle:login');
+    // A staff member who forgot the password: a code to the mobile on record, then the new password.
+    Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:password-reset');
+    Route::post('reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:password-reset');
 });
 
 /* server-to-server routes for CDP Core (X-Core-Key, no JWT) */
@@ -302,6 +306,10 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
     Route::get('global-search', [GlobalSearchController::class, 'search']);
     Route::post('loan-securities/investment-lookup', [LoanSecurityController::class, 'investmentLookup']);
     Route::match(['get', 'post'], 'cdp/verify-customer', [CdpCustomerVerificationController::class, 'checkCustomer']);
+
+    // Lists across customers: every guarantee, and every financial line (assets included)
+    Route::get('guarantors', [GuarantorController::class, 'index']);
+    Route::get('customer-financials', [CustomerFinancialController::class, 'all']);
 
     // Customers (addressed by public_id; other branches' customers are invisible)
     Route::prefix('customers')->group(function () {

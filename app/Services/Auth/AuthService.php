@@ -15,6 +15,7 @@ use App\Traits\ActivityLogTrait;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use PHPOpenSourceSaver\JWTAuth\JWTGuard;
 
 /**
@@ -135,6 +136,73 @@ class AuthService
         $this->logActivity('PASSWORD_CHANGE', 'User', 'Changed own password; other sessions ended');
 
         return $this->issueToken($user->fresh());
+    }
+
+    /**
+     * Start a forgotten-password reset: a code goes to the mobile on record. The answer is the same whether or
+     * not the email belongs to an account that can sign in (and has a mobile), so it cannot be used to find out
+     * which emails exist; an account that cannot be reset simply gets a challenge no code will ever open.
+     *
+     * @return string The challenge id to send back with the code.
+     */
+    public function requestPasswordReset(string $email): string
+    {
+        $user = User::query()->where('email', mb_strtolower(trim($email)))->first();
+        $phone = $user?->canLogin() ? PhoneNormalizer::normalize($user->loginOtpPhone()) : null;
+
+        if ($user === null || $phone === null) {
+            $this->logActivity('PASSWORD_RESET_REFUSED', 'Auth', 'Password reset asked for an account that cannot be reset', ['user_id' => $user?->id], 'warning');
+
+            return (string) Str::ulid();
+        }
+
+        $challenge = $this->otp->issue(
+            OtpPurpose::PasswordReset,
+            $user,
+            $phone,
+            'CDP Capital: :code is your CrediX password reset code. Valid :minutes minutes. If you did not ask for it, ignore this message.',
+            null,
+            null,
+            null,
+        );
+
+        $this->logActivity('PASSWORD_RESET_REQUESTED', 'Auth', 'Password reset code sent', ['user_id' => $user->id]);
+
+        return $challenge->public_id;
+    }
+
+    /**
+     * Finish the reset with the code: set the new password, end every session and clear any lock.
+     *
+     * @throws BusinessRuleException OTP_INVALID, OTP_EXPIRED, OTP_LOCKED, OTP_NOT_PENDING (422)
+     */
+    public function resetPassword(string $challengePublicId, string $code, string $newPassword): void
+    {
+        $challenge = OtpChallenge::query()
+            ->where('public_id', $challengePublicId)
+            ->where('purpose', OtpPurpose::PasswordReset->value)
+            ->first()
+            // Same answer as a wrong code, so an unknown challenge reveals nothing.
+            ?? throw new BusinessRuleException('OTP_INVALID', 'The code is not correct.', 422);
+
+        $this->otp->verify($challenge, $code);
+
+        /** @var User $user */
+        $user = User::query()->findOrFail($challenge->subject_id);
+
+        DB::transaction(function () use ($user, $newPassword) {
+            $user->forceFill([
+                'password' => $newPassword,
+                'password_changed_at' => now(),
+                'must_change_password' => false,
+                'failed_login_attempts' => 0,
+                'locked_until' => null,
+                // SECURITY: every token issued before this moment is now refused.
+                'token_version' => $user->token_version + 1,
+            ])->save();
+        });
+
+        $this->logActivity('PASSWORD_RESET', 'User', 'Password reset with an SMS code; every session ended', ['user_id' => $user->id]);
     }
 
     /**

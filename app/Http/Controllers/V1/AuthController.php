@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\ForgotPasswordRequest;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\ResetPasswordRequest;
 use App\Http\Requests\Auth\VerifyLoginOtpRequest;
 use App\Models\User;
 use App\Services\Auth\AuthService;
@@ -62,6 +64,33 @@ class AuthController extends Controller
         $result = $this->auth->verifyOtp($request->validated('challenge_id'), $request->validated('code'), $request->ip());
 
         return $this->signedIn($result['user'], $result['token'], $request, 'Login successful');
+    }
+
+    /**
+     * POST /forgot-password {email}: send a reset code to the mobile on record. Always the same 200 answer.
+     */
+    public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
+    {
+        $challengeId = $this->auth->requestPasswordReset($request->validated('email'));
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'If the account can be reset, a code was sent to its registered mobile.',
+            'data' => [
+                'challenge_id' => $challengeId,
+                'expires_in' => app(\App\Services\Security\OtpService::class)->expiryMinutes() * 60,
+            ],
+        ], 200);
+    }
+
+    /**
+     * POST /reset-password {challenge_id, code, password, password_confirmation}.
+     */
+    public function resetPassword(ResetPasswordRequest $request): JsonResponse
+    {
+        $this->auth->resetPassword($request->validated('challenge_id'), $request->validated('code'), $request->validated('password'));
+
+        return response()->json(['status' => 'success', 'message' => 'Password changed. Sign in with the new password.', 'data' => null], 200);
     }
 
     /**

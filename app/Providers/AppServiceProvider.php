@@ -161,6 +161,12 @@ class AppServiceProvider extends ServiceProvider
             ? Limit::perMinute(240)->by('api-user|'.$request->user('api')->id)
             : Limit::perMinute(120)->by('api-ip|'.$request->ip()));
 
+        // Forgotten password: asking for a code is tight per address and email, and so is guessing one.
+        RateLimiter::for('password-reset', fn (Request $request) => [
+            Limit::perMinute(3)->by('password-reset|'.$request->ip().'|'.mb_strtolower((string) $request->input('email', $request->input('challenge_id')))),
+            Limit::perMinute(20)->by('password-reset-ip|'.$request->ip()),
+        ]);
+
         // Own password change: 5 tries a minute per user (guessing the current password is slow).
         RateLimiter::for('password-change', fn (Request $request) => Limit::perMinute(5)->by('password-change|'.$request->user()?->id));
 
