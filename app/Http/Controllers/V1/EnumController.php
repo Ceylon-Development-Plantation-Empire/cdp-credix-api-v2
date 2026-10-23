@@ -28,6 +28,8 @@ use App\Enums\NotificationStatus;
 use App\Enums\PartyRole;
 use App\Enums\PaymentChannel;
 use App\Enums\PricingMethod;
+use App\Enums\RecoveryStage;
+use App\Enums\RecoveryStatus;
 use App\Enums\RepaymentFrequency;
 use App\Enums\RequirementRule;
 use App\Http\Controllers\Controller;
@@ -63,6 +65,8 @@ class EnumController extends Controller
             'charge_collection' => ChargeCollection::class,
             'legal_document_type' => LegalDocumentType::class,
             'approval_status' => ApprovalStatus::class,
+            'recovery_stage' => RecoveryStage::class,
+            'recovery_status' => RecoveryStatus::class,
             'gl_account_type' => GlAccountType::class,
             'gl_journal_source' => GlJournalSource::class,
             'gl_journal_status' => GlJournalStatus::class,
