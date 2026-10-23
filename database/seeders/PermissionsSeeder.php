@@ -193,7 +193,6 @@ class PermissionsSeeder extends Seeder
             ['name' => 'Loan Review', 'group_name' => 'Loan Decision Permissions'],
             ['name' => 'Loan Verify', 'group_name' => 'Loan Decision Permissions'],
             ['name' => 'Loan Collateral Verify', 'group_name' => 'Loan Decision Permissions'],
-            // The amount a user can approve also needs roles.max_approval_amount on one of their roles.
             ['name' => 'Loan Approve', 'group_name' => 'Loan Decision Permissions'],
             // Special approval: more than was asked for, a longer term, or outside the product's limits, for one
             // application at a time (needs the flag special_approval and a written reason).

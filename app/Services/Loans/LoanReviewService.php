@@ -23,8 +23,8 @@ use Illuminate\Support\Facades\DB;
  * Review → verify → approve, plus return, reject and cancel.
  *
  * Maker-checker (rule L-5): the person who submitted cannot review; the reviewer cannot verify;
- * nobody who submitted, reviewed or verified can approve; an approver approves only up to the
- * highest approval limit among their roles. There is no role-name exemption.
+ * nobody who submitted, reviewed or verified can approve. The "Loan Approve" permission is all an
+ * approver needs: there is no approval limit per role.
  *
  * Verification and approval run the same readiness checks and report every problem at once,
  * so the officer can fix them in one go.
@@ -138,7 +138,6 @@ class LoanReviewService
                 }
             }
 
-            $this->assertApprovalAuthority($by, $total);
             $this->assertReady($loan, $borrowingLoans, $amounts, (string) $rate, $tenure);
 
             foreach ($borrowingLoans as $each) {
@@ -367,25 +366,6 @@ class LoanReviewService
         }
 
         return $amounts;
-    }
-
-    /**
-     * The approval authority matrix: the highest max_approval_amount among the user's roles.
-     * A role without a limit cannot approve loans.
-     */
-    protected function assertApprovalAuthority(User $user, BigDecimal $amount): void
-    {
-        $limit = $user->roles()->max('max_approval_amount');
-
-        if ($limit === null) {
-            throw new BusinessRuleException('APPROVAL_AUTHORITY_MISSING', 'Your role has no loan approval limit.', 403);
-        }
-
-        if ($amount->isGreaterThan($limit)) {
-            throw new BusinessRuleException('APPROVAL_LIMIT_EXCEEDED', "This loan is above your approval limit of {$limit}. It needs a higher authority.", 403, [
-                'limit' => (string) Money::of($limit),
-            ]);
-        }
     }
 
     protected function assertMove(Loan $loan, LoanStatus $to): void
