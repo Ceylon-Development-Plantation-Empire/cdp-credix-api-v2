@@ -277,7 +277,7 @@ class LoanController extends Controller implements HasMiddleware
             'customer', 'borrowerGroup', 'product', 'branch', 'officer',
             'parties.customer',
             'memberLoans.parties.customer',
-            'collaterals.owner',
+            'collaterals.owner', 'collaterals.documents.documentType',
         ]);
     }
 }

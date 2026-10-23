@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources\Loans;
 
+use App\Http\Resources\Documents\DocumentResource;
 use App\Models\Collateral;
 use App\Support\Collateral\CollateralTypes;
 use Illuminate\Http\Request;
@@ -39,6 +40,7 @@ class CollateralResource extends JsonResource
             'verified_at' => $this->verified_at?->toApiString(),
             'perfected_at' => $this->perfected_at?->toApiString(),
             'released_at' => $this->released_at?->toApiString(),
+            'documents' => DocumentResource::collection($this->whenLoaded('documents')),
         ];
     }
 }
