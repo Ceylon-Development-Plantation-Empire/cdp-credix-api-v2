@@ -337,6 +337,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
 
     // Documents (download only through this authorised endpoint, never by path)
     Route::prefix('documents')->group(function () {
+        Route::get('/', [DocumentController::class, 'index']);
         Route::get('{publicId}/download', [DocumentController::class, 'download']);
         // A new file needs multipart, which PHP only reads on POST; JSON details can use PUT or PATCH.
         Route::match(['put', 'patch', 'post'], '{publicId}', [DocumentController::class, 'update']);
