@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Documents;
 
+use App\Enums\DocumentFormat;
 use App\Enums\DocumentTarget;
 use App\Http\Requests\Concerns\FormatsValidationErrors;
 use Illuminate\Foundation\Http\FormRequest;
@@ -27,7 +28,7 @@ class CreateDocumentTypeRequest extends FormRequest
             'validity_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
             // Only safe document formats; executables, office macros and archives are never accepted.
             'allowed_mimes' => ['sometimes', 'array', 'min:1'],
-            'allowed_mimes.*' => ['string', 'distinct', Rule::in(['pdf', 'jpg', 'jpeg', 'png'])],
+            'allowed_mimes.*' => ['string', 'distinct', Rule::enum(DocumentFormat::class)],
             'max_size_kb' => ['sometimes', 'integer', 'min:100', 'max:20480'],
             'is_active' => ['sometimes', 'boolean'],
         ];

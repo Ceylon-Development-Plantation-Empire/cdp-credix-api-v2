@@ -11,6 +11,7 @@ use App\Enums\ChargeBehaviour;
 use App\Enums\ChargeCalculation;
 use App\Enums\ChargeCollection;
 use App\Enums\ChargeRecurrence;
+use App\Enums\DocumentFormat;
 use App\Enums\DocumentStatus;
 use App\Enums\DocumentTarget;
 use App\Enums\EmploymentStatus;
@@ -58,6 +59,7 @@ class EnumController extends Controller
             'id_type' => IdType::class,
             'language' => Language::class,
             'document_status' => DocumentStatus::class,
+            'document_format' => DocumentFormat::class,
             'document_target' => DocumentTarget::class,
             'requirement_rule' => RequirementRule::class,
             'charge_calculation' => ChargeCalculation::class,
