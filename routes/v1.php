@@ -25,6 +25,7 @@ use App\Http\Controllers\V1\DatabaseController;
 use App\Http\Controllers\V1\DepartmentController;
 use App\Http\Controllers\V1\DesignationController;
 use App\Http\Controllers\V1\DocumentController;
+use App\Http\Controllers\V1\EnumController;
 use App\Http\Controllers\V1\DocumentRequirementController;
 use App\Http\Controllers\V1\DocumentTypeController;
 use App\Http\Controllers\V1\EmployeeHierarchyController;
@@ -97,6 +98,8 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
 Route::middleware(['auth:api', 'token.current', 'password.changed'])->prefix('v1')->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::get('me', [AuthController::class, 'me']);
+    // The fixed option lists (payment channels, loan stages, charge behaviours ...) screens build dropdowns from.
+    Route::get('enums', [EnumController::class, 'index']);
     Route::put('me', [ProfileController::class, 'update']);
     Route::post('password/change', [ProfileController::class, 'changePassword'])->middleware('throttle:password-change');
 });
