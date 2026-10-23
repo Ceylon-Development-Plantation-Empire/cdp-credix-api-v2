@@ -31,7 +31,8 @@ use Illuminate\Support\Facades\DB;
  * - the loan is accepted, and every borrower's OTP acceptance still matches the approved terms;
  * - the person disbursing did not approve the loan;
  * - every collateral is perfected (bond registered, CR endorsed, gold in the vault);
- * - the signed agreement is uploaded and verified.
+ * - every borrower confirmed their details and the terms on the review link (OTP), or with an officer, and
+ *   nothing changed since. This replaces the signed paper agreement.
  *
  * Due dates count from the disbursement date, never from approval (design 6.3). The request
  * carries an Idempotency-Key: a retried or double-clicked disbursement returns the first result
@@ -210,9 +211,10 @@ class DisbursementService
             }
         }
 
-        // Optional (setting loan_review.required_before_disbursement): the customer confirmed their details
-        // and the terms on the review link, or with an officer, and nothing changed since.
-        if (Setting::value('loan_review.required_before_disbursement', false)) {
+        // On unless the business switches it off (setting loan_review.required_before_disbursement): the customer
+        // confirmed their details and the terms on the review link, or with an officer, and nothing changed
+        // since. A customer who asked for a correction has not confirmed, so the loan waits for it.
+        if (Setting::value('loan_review.required_before_disbursement', true)) {
             foreach ($borrowingLoans as $each) {
                 foreach ($this->reviews->recipients($each) as $party) {
                     if (! $this->reviews->isConfirmed($party)) {
@@ -226,10 +228,6 @@ class DisbursementService
 
         if ($collaterals->contains(fn ($c) => $c->status !== CollateralStatus::Perfected)) {
             $problems[] = ['code' => 'COLLATERAL_NOT_PERFECTED', 'message' => 'Every collateral must be perfected (registered or in custody) before disbursement.'];
-        }
-
-        if (! $this->checklist->hasVerifiedAgreement($loan)) {
-            $problems[] = ['code' => 'AGREEMENT_MISSING', 'message' => 'The signed loan agreement must be uploaded and verified before disbursement.'];
         }
 
         if ($problems) {
