@@ -13,6 +13,9 @@ use App\Enums\DocumentStatus;
 use App\Enums\DocumentTarget;
 use App\Enums\EmploymentStatus;
 use App\Enums\FinanceBasis;
+use App\Enums\GlAccountType;
+use App\Enums\GlJournalSource;
+use App\Enums\GlJournalStatus;
 use App\Enums\IdType;
 use App\Enums\Language;
 use App\Enums\LegalDocumentType;
@@ -57,6 +60,9 @@ class EnumController extends Controller
             'charge_recurrence' => ChargeRecurrence::class,
             'charge_collection' => ChargeCollection::class,
             'legal_document_type' => LegalDocumentType::class,
+            'gl_account_type' => GlAccountType::class,
+            'gl_journal_source' => GlJournalSource::class,
+            'gl_journal_status' => GlJournalStatus::class,
             'notification_channel' => NotificationChannel::class,
             'notification_status' => NotificationStatus::class,
         ];
