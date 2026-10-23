@@ -245,7 +245,7 @@ class BranchController extends Controller implements HasMiddleware
             }
 
             $branches = $query->select('id', 'name', 'code', 'city', 'province_id', 'region_id', 'zone_id')
-                ->with(['province:id,name', 'region:id,name', 'zonal:id,name'])
+                ->with(['province:id,name,parent_id', 'region:id,name,parent_id', 'zonal:id,name,parent_id'])
                 ->orderBy('name', 'asc')
                 ->get();
 
