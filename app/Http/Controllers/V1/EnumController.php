@@ -17,6 +17,9 @@ use App\Enums\IdType;
 use App\Enums\Language;
 use App\Enums\LegalDocumentType;
 use App\Enums\LoanStatus;
+use App\Enums\NotificationChannel;
+use App\Enums\NotificationEvent;
+use App\Enums\NotificationStatus;
 use App\Enums\PartyRole;
 use App\Enums\PaymentChannel;
 use App\Enums\PricingMethod;
@@ -54,6 +57,8 @@ class EnumController extends Controller
             'charge_recurrence' => ChargeRecurrence::class,
             'charge_collection' => ChargeCollection::class,
             'legal_document_type' => LegalDocumentType::class,
+            'notification_channel' => NotificationChannel::class,
+            'notification_status' => NotificationStatus::class,
         ];
 
         $data = array_map(fn (string $enum) => $this->options($enum), $lists);
@@ -67,6 +72,13 @@ class EnumController extends Controller
             'recurrences' => array_map(fn (ChargeRecurrence $r) => $r->value, $b->permittedRecurrences()),
             'collections' => array_map(fn (ChargeCollection $c) => $c->value, $b->allowedCollections()),
         ], ChargeBehaviour::cases());
+
+        // A message template is written for one event, and says which placeholders that event can fill.
+        $data['notification_event'] = array_map(fn (NotificationEvent $e) => [
+            'value' => $e->value,
+            'label' => Str::headline(str_replace(['.', '-'], ' ', $e->value)),
+            'placeholders' => $e->placeholders(),
+        ], NotificationEvent::cases());
 
         return response()->json(['status' => 'success', 'message' => 'Option lists retrieved successfully', 'data' => $data], 200);
     }
