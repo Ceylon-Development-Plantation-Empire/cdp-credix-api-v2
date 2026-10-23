@@ -44,7 +44,9 @@ class ProductController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Product Index', only: ['index', 'show', 'options', 'charges', 'collateralRules', 'quote']),
+            new Middleware('permission:Product Index', only: ['index', 'show', 'charges', 'collateralRules']),
+            // The loan wizard reads the product options and prices a quote, so whoever may start an application may too.
+            new Middleware('permission:Product Index|Loan Create', only: ['options', 'quote']),
             new Middleware('permission:Product Create', only: ['store']),
             new Middleware('permission:Product Update', only: ['update', 'replaceCharges', 'replaceCollateralRules']),
             new Middleware('permission:Product Delete', only: ['destroy']),

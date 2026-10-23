@@ -30,7 +30,8 @@ class PermissionController extends Controller implements HasMiddleware
     public function index(Request $request)
     {
         try {
-            $perPage = min((int) $request->get('per_page', 15), 100);
+            // The whole list is a few hundred short rows and the role screen needs all of it, so the cap is higher than elsewhere.
+            $perPage = min((int) $request->get('per_page', 15), 500);
 
             $query = Permission::query();
 
