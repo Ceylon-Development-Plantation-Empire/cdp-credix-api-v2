@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\V1;
 
+use App\Enums\ApprovalAction;
+use App\Enums\ApprovalStatus;
 use App\Enums\BorrowerType;
 use App\Enums\ChargeBehaviour;
 use App\Enums\ChargeCalculation;
@@ -60,6 +62,7 @@ class EnumController extends Controller
             'charge_recurrence' => ChargeRecurrence::class,
             'charge_collection' => ChargeCollection::class,
             'legal_document_type' => LegalDocumentType::class,
+            'approval_status' => ApprovalStatus::class,
             'gl_account_type' => GlAccountType::class,
             'gl_journal_source' => GlJournalSource::class,
             'gl_journal_status' => GlJournalStatus::class,
@@ -78,6 +81,14 @@ class EnumController extends Controller
             'recurrences' => array_map(fn (ChargeRecurrence $r) => $r->value, $b->permittedRecurrences()),
             'collections' => array_map(fn (ChargeCollection $c) => $c->value, $b->allowedCollections()),
         ], ChargeBehaviour::cases());
+
+        // An approval request says which permission decides it and whether the decision must quote a reference.
+        $data['approval_action'] = array_map(fn (ApprovalAction $a) => [
+            'value' => $a->value,
+            'label' => Str::headline($a->value),
+            'permission' => $a->permission(),
+            'requires_reference' => $a->requiresReference(),
+        ], ApprovalAction::cases());
 
         // A message template is written for one event, and says which placeholders that event can fill.
         $data['notification_event'] = array_map(fn (NotificationEvent $e) => [
