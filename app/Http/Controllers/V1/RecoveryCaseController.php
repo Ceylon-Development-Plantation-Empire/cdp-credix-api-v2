@@ -8,9 +8,11 @@ use App\Enums\RecoveryStage;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Loans\LoanRemarksRequest;
 use App\Http\Requests\Recovery\AssignRecoveryCaseRequest;
+use App\Http\Requests\Recovery\OpenRecoveryCaseRequest;
 use App\Http\Requests\Recovery\RecoveryActivityRequest;
 use App\Http\Resources\Loans\LoanActivityResource;
 use App\Http\Resources\Recovery\RecoveryCaseResource;
+use App\Models\Loan;
 use App\Models\LoanActivity;
 use App\Models\RecoveryCase;
 use App\Models\User;
@@ -36,7 +38,12 @@ class RecoveryCaseController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:Recovery Case Index', only: ['index', 'show', 'activities']),
+            new Middleware('permission:Recovery Case Create', only: ['store']),
+            new Middleware('permission:Recovery Case Update', only: ['update']),
+            new Middleware('permission:Recovery Case Delete', only: ['destroy']),
             new Middleware('permission:Recovery Case Assign', only: ['assign', 'moveToLegal']),
+            new Middleware('permission:Recovery Activity Update', only: ['updateActivity']),
+            new Middleware('permission:Recovery Activity Delete', only: ['destroyActivity']),
             new Middleware('permission:Recovery Case Work', only: ['addActivity']),
         ];
     }
@@ -89,6 +96,99 @@ class RecoveryCaseController extends Controller implements HasMiddleware
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve recovery case', $th);
+        }
+    }
+
+    public function store(OpenRecoveryCaseRequest $request)
+    {
+        try {
+            $loan = Loan::where('public_id', $request->validated('loan_public_id'))->first();
+
+            if (! $loan) {
+                return $this->notFound('Loan not found');
+            }
+
+            $case = $this->recovery->openManually($loan, $request->validated('remarks'), $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Recovery case opened',
+                'data' => new RecoveryCaseResource($case->load(['loan.customer', 'branch', 'agent'])),
+            ], 201);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to open recovery case', $th);
+        }
+    }
+
+    /**
+     * Change the agent or the stage of an open case (same rules as POST .../assign).
+     */
+    public function update(AssignRecoveryCaseRequest $request, string $publicId)
+    {
+        return $this->assign($request, $publicId);
+    }
+
+    /**
+     * Close an open case by decision, with a reason. The case and its activities stay on record.
+     */
+    public function destroy(LoanRemarksRequest $request, string $publicId)
+    {
+        try {
+            $case = RecoveryCase::where('public_id', $publicId)->first();
+
+            if (! $case) {
+                return $this->notFound('Recovery case not found');
+            }
+
+            $this->recovery->close($case, $request->validated('remarks'), $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Recovery case closed',
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to close recovery case', $th);
+        }
+    }
+
+    public function updateActivity(RecoveryActivityRequest $request, string $publicId, int $activityId)
+    {
+        try {
+            $case = RecoveryCase::where('public_id', $publicId)->first();
+
+            if (! $case) {
+                return $this->notFound('Recovery case not found');
+            }
+
+            $activity = $this->recovery->updateActivity($case, $activityId, $request->validated(), $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Recovery activity updated',
+                'data' => new LoanActivityResource($activity->load('performer')),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to update recovery activity', $th);
+        }
+    }
+
+    public function destroyActivity(Request $request, string $publicId, int $activityId)
+    {
+        try {
+            $case = RecoveryCase::where('public_id', $publicId)->first();
+
+            if (! $case) {
+                return $this->notFound('Recovery case not found');
+            }
+
+            $this->recovery->deleteActivity($case, $activityId, $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Recovery activity deleted',
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to delete recovery activity', $th);
         }
     }
 

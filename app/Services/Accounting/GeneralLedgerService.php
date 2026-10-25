@@ -168,6 +168,77 @@ class GeneralLedgerService
     }
 
     /**
+     * Replace your own pending manual journal: the old request is withdrawn and the corrected journal is
+     * sent for approval as a new one (a journal waiting for approval is never edited in place).
+     *
+     * @param  array<string, mixed>  $data  Validated ManualJournalRequest data.
+     */
+    public function updateManual(GlJournal $journal, array $data, User $by): ApprovalRequest
+    {
+        return DB::transaction(function () use ($journal, $data, $by) {
+            $this->approvals->cancel($this->ownPendingRequest($journal, $by), $by);
+
+            return $this->requestManual($data, $by);
+        }, attempts: 3);
+    }
+
+    /**
+     * "Delete" a journal without erasing history:
+     * - pending: withdrawn by its maker (the journal stays, as rejected);
+     * - posted manual journal: a reversing journal (debits and credits swapped) is sent for approval.
+     * Journals the loan postings wrote are corrected through the loan transaction, never here.
+     *
+     * @return GlJournal|ApprovalRequest the withdrawn journal, or the approval request of the reversal
+     */
+    public function deleteManual(GlJournal $journal, string $reason, User $by): GlJournal|ApprovalRequest
+    {
+        if ($journal->status === GlJournalStatus::Pending) {
+            $this->approvals->cancel($this->ownPendingRequest($journal, $by), $by);
+
+            return $journal->refresh();
+        }
+
+        if ($journal->source !== GlJournalSource::Manual || $journal->status !== GlJournalStatus::Posted) {
+            throw new BusinessRuleException('JOURNAL_NOT_DELETABLE', 'Only a manual journal can be reversed here; loan postings are corrected through the loan transaction.', 409);
+        }
+
+        $label = "Reversal of {$journal->journal_no}";
+
+        if (GlJournal::where('narration', 'like', $label.'%')->whereIn('status', [GlJournalStatus::Pending->value, GlJournalStatus::Posted->value])->exists()) {
+            throw new BusinessRuleException('JOURNAL_ALREADY_REVERSED', 'This journal already has a reversal pending or posted.', 409);
+        }
+
+        return $this->requestManual([
+            'value_date' => BusinessDate::today()->toDateString(),
+            'narration' => mb_substr("{$label}: {$reason}", 0, 255),
+            'branch_id' => $journal->branch_id,
+            'lines' => $journal->lines()->get()->map(fn (GlJournalLine $line) => [
+                'gl_account_id' => $line->gl_account_id,
+                'debit' => (string) $line->credit,
+                'credit' => (string) $line->debit,
+                'memo' => $label,
+            ])->all(),
+        ], $by);
+    }
+
+    protected function ownPendingRequest(GlJournal $journal, User $by): ApprovalRequest
+    {
+        if ($journal->status !== GlJournalStatus::Pending || $journal->source !== GlJournalSource::Manual) {
+            throw new BusinessRuleException('JOURNAL_NOT_PENDING', 'Only a manual journal that is still waiting for approval can be changed.', 409);
+        }
+
+        if ($journal->created_by !== $by->id) {
+            throw new BusinessRuleException('NOT_REQUESTER', 'Only the person who entered the journal can change or withdraw it.', 403);
+        }
+
+        return ApprovalRequest::withoutGlobalScope('branch')
+            ->where('subject_type', $journal->getMorphClass())
+            ->where('subject_id', $journal->id)
+            ->where('status', 'pending')
+            ->firstOrFail();
+    }
+
+    /**
      * Checker (called by ManualJournalHandler inside the decision transaction).
      */
     public function decideManual(GlJournal $journal, bool $approved, User $approver): GlJournal

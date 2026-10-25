@@ -8,6 +8,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Accounting\JournalExportRequest;
 use App\Http\Requests\Accounting\JournalIndexRequest;
 use App\Http\Requests\Accounting\ManualJournalRequest;
+use App\Http\Requests\Loans\LoanRemarksRequest;
+use App\Models\ApprovalRequest;
 use App\Http\Resources\Accounting\GlJournalResource;
 use App\Http\Resources\Approvals\ApprovalRequestResource;
 use App\Models\GlJournal;
@@ -38,6 +40,8 @@ class GlJournalController extends Controller implements HasMiddleware
         return [
             new Middleware('permission:GL Journal Index', only: ['index', 'show', 'export']),
             new Middleware('permission:GL Journal Request', only: ['store']),
+            new Middleware('permission:GL Journal Update', only: ['update']),
+            new Middleware('permission:GL Journal Delete', only: ['destroy']),
         ];
     }
 
@@ -118,6 +122,68 @@ class GlJournalController extends Controller implements HasMiddleware
             ], 202);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to create journal', $th);
+        }
+    }
+
+    /**
+     * Replace your own pending manual journal; the corrected one is sent for approval.
+     */
+    public function update(ManualJournalRequest $request, string $publicId)
+    {
+        try {
+            $journal = GlJournal::where('public_id', $publicId)->first();
+
+            if (! $journal) {
+                return $this->notFound('Journal not found');
+            }
+
+            $data = $request->validated();
+            $restricted = BranchAccess::restrictedBranchId();
+
+            if ($restricted !== null) {
+                $data['branch_id'] = $restricted;
+            }
+
+            $approval = $this->gl->updateManual($journal, $data, $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Journal replaced and sent for approval',
+                'data' => new ApprovalRequestResource($approval->load('requester')),
+            ], 202);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to update journal', $th);
+        }
+    }
+
+    /**
+     * Withdraw your pending journal (200), or ask for the reversal of a posted manual one (202).
+     */
+    public function destroy(LoanRemarksRequest $request, string $publicId)
+    {
+        try {
+            $journal = GlJournal::where('public_id', $publicId)->first();
+
+            if (! $journal) {
+                return $this->notFound('Journal not found');
+            }
+
+            $result = $this->gl->deleteManual($journal, $request->validated('remarks'), $request->user());
+
+            if ($result instanceof ApprovalRequest) {
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'A reversing journal was sent for approval',
+                    'data' => new ApprovalRequestResource($result->load('requester')),
+                ], 202);
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Journal withdrawn',
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to delete journal', $th);
         }
     }
 

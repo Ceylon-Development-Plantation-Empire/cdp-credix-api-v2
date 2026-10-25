@@ -8,12 +8,14 @@ use App\Enums\TransactionType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Loans\LoanRemarksRequest;
 use App\Http\Requests\Loans\PostPaymentRequest;
+use App\Http\Requests\Loans\UpdatePaymentRequest;
 use App\Http\Resources\Approvals\ApprovalRequestResource;
 use App\Http\Resources\Loans\LoanTransactionResource;
 use App\Models\ApprovalRequest;
 use App\Models\Loan;
 use App\Models\LoanTransaction;
 use App\Services\Loans\RepaymentService;
+use App\Traits\ActivityLogTrait;
 use App\Traits\HandlesApiErrors;
 use App\Traits\PaginatesResources;
 use Illuminate\Http\Request;
@@ -26,7 +28,7 @@ use Illuminate\Routing\Controllers\Middleware;
  */
 class PaymentController extends Controller implements HasMiddleware
 {
-    use HandlesApiErrors, PaginatesResources;
+    use ActivityLogTrait, HandlesApiErrors, PaginatesResources;
 
     public function __construct(
         protected RepaymentService $repayments,
@@ -37,6 +39,8 @@ class PaymentController extends Controller implements HasMiddleware
         return [
             new Middleware('permission:Payment Index', only: ['index', 'show']),
             new Middleware('permission:Payment Create', only: ['store']),
+            new Middleware('permission:Payment Update', only: ['update']),
+            new Middleware('permission:Payment Delete', only: ['destroy']),
             new Middleware('permission:Payment Reversal Request', only: ['reverse']),
         ];
     }
@@ -126,6 +130,42 @@ class PaymentController extends Controller implements HasMiddleware
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve payment', $th);
         }
+    }
+
+    /**
+     * Correct the narration or external reference. The old values are kept in the audit log.
+     */
+    public function update(UpdatePaymentRequest $request, string $publicId)
+    {
+        try {
+            $transaction = $this->find($publicId);
+
+            if (! $transaction) {
+                return $this->notFound('Payment not found');
+            }
+
+            $old = $transaction->only(['narration', 'external_reference']);
+            $transaction->fill($request->validated())->save();
+
+            $this->logActivity('UPDATE', 'Payment', "Edited the text of payment {$transaction->txn_no}", ['old' => $old, 'new' => $request->validated()]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Payment updated successfully',
+                'data' => new LoanTransactionResource($transaction->load(['loan', 'payer', 'reversal', 'allocations.installment', 'poster'])),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to update payment', $th);
+        }
+    }
+
+    /**
+     * A posted payment is never erased from the ledger: deleting it asks for its reversal, which another
+     * person with Payment Reversal Approve decides (same request as POST /payments/{id}/reverse).
+     */
+    public function destroy(LoanRemarksRequest $request, string $publicId)
+    {
+        return $this->reverse($request, $publicId);
     }
 
     /**

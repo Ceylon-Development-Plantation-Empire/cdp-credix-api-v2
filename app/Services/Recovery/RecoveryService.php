@@ -12,6 +12,7 @@ use App\Enums\UserType;
 use App\Events\RecoveryCaseOpened;
 use App\Exceptions\BusinessRuleException;
 use App\Models\Loan;
+use App\Support\BusinessDate;
 use App\Models\LoanActivity;
 use App\Models\RecoveryCase;
 use App\Models\Setting;
@@ -108,6 +109,85 @@ class RecoveryService
 
             return $case;
         });
+    }
+
+    /**
+     * Open a case by hand for a loan that is in arrears and has none open.
+     */
+    public function openManually(Loan $loan, string $remarks, User $by): RecoveryCase
+    {
+        if ($loan->status !== LoanStatus::Active || (int) $loan->days_past_due <= 0) {
+            throw new BusinessRuleException('RECOVERY_NOT_IN_ARREARS', 'A recovery case is opened for an active loan that is past due.', 422);
+        }
+
+        if (RecoveryCase::withoutGlobalScope('branch')->where('loan_id', $loan->id)->open()->exists()) {
+            throw new BusinessRuleException('RECOVERY_CASE_EXISTS', 'This loan already has an open recovery case.', 409);
+        }
+
+        $case = $this->open($loan, BusinessDate::today()->toImmutable());
+
+        $this->recordOnLoan($case, $by, "Case {$case->case_no} opened by hand: {$remarks}");
+
+        return $case;
+    }
+
+    /**
+     * Close an open case by decision (not because the arrears cleared). The case and its history stay.
+     */
+    public function close(RecoveryCase $case, string $remarks, User $by): RecoveryCase
+    {
+        return DB::transaction(function () use ($case, $remarks, $by) {
+            $case = RecoveryCase::whereKey($case->id)->lockForUpdate()->firstOrFail();
+            $this->assertOpen($case);
+
+            $case->forceFill(['status' => RecoveryStatus::Closed, 'closed_at' => now(), 'open_case_key' => null])->save();
+            $this->recordOnLoan($case, $by, "Case {$case->case_no} closed: {$remarks}");
+
+            return $case;
+        });
+    }
+
+    /**
+     * Correct a call, visit, promise to pay or note. Only its author, only while the case is open.
+     *
+     * @param  array{type: string, remarks: string, promised_amount?: string|null, promised_date?: string|null}  $data
+     */
+    public function updateActivity(RecoveryCase $case, int $activityId, array $data, User $by): LoanActivity
+    {
+        $this->assertOpen($case);
+        $activity = $this->ownActivity($case, $activityId, $by);
+
+        if ($activity->type->value !== $data['type']) {
+            throw new BusinessRuleException('ACTIVITY_TYPE_FIXED', 'The kind of activity cannot change; delete it and record a new one.', 422);
+        }
+
+        $activity->forceFill([
+            'remarks' => $data['remarks'],
+            'promised_amount' => $data['promised_amount'] ?? null,
+            'promised_date' => $data['promised_date'] ?? null,
+        ])->save();
+
+        return $activity;
+    }
+
+    public function deleteActivity(RecoveryCase $case, int $activityId, User $by): void
+    {
+        $this->assertOpen($case);
+        $this->ownActivity($case, $activityId, $by)->delete();
+    }
+
+    protected function ownActivity(RecoveryCase $case, int $activityId, User $by): LoanActivity
+    {
+        $activity = LoanActivity::where('recovery_case_id', $case->id)
+            ->where('performed_by', $by->id)
+            ->whereIn('type', array_map(fn (LoanActivityType $t) => $t->value, LoanActivity::EDITABLE_TYPES))
+            ->find($activityId);
+
+        if (! $activity) {
+            throw new BusinessRuleException('ACTIVITY_NOT_FOUND', 'Activity not found, or it was written by someone else.', 404);
+        }
+
+        return $activity;
     }
 
     public function moveToLegal(RecoveryCase $case, string $remarks, User $by): RecoveryCase

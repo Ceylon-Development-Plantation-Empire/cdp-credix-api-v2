@@ -118,9 +118,14 @@ class LoanTransaction extends Model
             $txn->ip_address ??= request()?->ip();
         });
 
-        // The only change ever allowed is the reference number written right after the insert.
+        // Allowed: the reference number written right after the insert, and the two free-text fields
+        // that carry no money (narration, external reference). Everything else is a reversal.
         static::updating(function (LoanTransaction $txn) {
-            if (array_keys($txn->getDirty()) !== [self::REFERENCE_COLUMN] || $txn->getOriginal(self::REFERENCE_COLUMN) !== null) {
+            $dirty = array_keys($txn->getDirty());
+            $setsNumber = $dirty === [self::REFERENCE_COLUMN] && $txn->getOriginal(self::REFERENCE_COLUMN) === null;
+            $editsText = $dirty !== [] && array_diff($dirty, ['narration', 'external_reference']) === [];
+
+            if (! $setsNumber && ! $editsText) {
                 throw new LogicException('Loan transactions cannot be changed. Post a reversal instead.');
             }
         });
