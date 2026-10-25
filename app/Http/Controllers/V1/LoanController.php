@@ -16,6 +16,7 @@ use App\Http\Resources\Loans\LoanListResource;
 use App\Http\Resources\Loans\LoanResource;
 use App\Models\Customer;
 use App\Models\Loan;
+use App\Models\LoanActivity;
 use App\Services\Loans\LoanApplicationService;
 use App\Services\Loans\LoanChecklistService;
 use App\Services\Loans\LoanPricingService;
@@ -46,7 +47,13 @@ class LoanController extends Controller implements HasMiddleware
         return [
             new Middleware('permission:Loan Index', only: ['index', 'show', 'schedule', 'activities', 'checklist']),
             new Middleware('permission:Loan Create', only: ['store']),
-            new Middleware('permission:Loan Update', only: ['update', 'addNote']),
+            new Middleware('permission:Loan Update', only: ['update']),
+            new Middleware('permission:Loan Delete', only: ['destroy']),
+            new Middleware('permission:Loan Restore', only: ['restore']),
+            new Middleware('permission:Loan Note Index', only: ['notes']),
+            new Middleware('permission:Loan Note Create', only: ['addNote']),
+            new Middleware('permission:Loan Note Update', only: ['updateNote']),
+            new Middleware('permission:Loan Note Delete', only: ['destroyNote']),
         ];
     }
 
@@ -54,6 +61,15 @@ class LoanController extends Controller implements HasMiddleware
     {
         try {
             $query = Loan::with(['customer', 'borrowerGroup', 'product', 'branch'])->topLevel()->latest('id');
+
+            // The deleted applications, for whoever may restore them.
+            if ($request->boolean('only_deleted')) {
+                if (! $request->user()->can('Loan Restore')) {
+                    return response()->json(['status' => 'error', 'code' => 'FORBIDDEN', 'message' => 'Only someone who can restore loans may list deleted ones.'], 403);
+                }
+
+                $query->onlyTrashed();
+            }
 
             if ($request->filled('search')) {
                 $query->search($request->search);
@@ -161,6 +177,141 @@ class LoanController extends Controller implements HasMiddleware
         } catch (\Throwable $th) {
             return $this->serverError('Failed to update loan application', $th);
         }
+    }
+
+    /**
+     * DELETE /loans/{id} with a reason: only an application that was never paid out.
+     */
+    public function destroy(LoanRemarksRequest $request, string $publicId)
+    {
+        try {
+            $loan = Loan::where('public_id', $publicId)->first();
+
+            if (! $loan) {
+                return $this->notFound('Loan not found');
+            }
+
+            $this->applications->delete($loan, $request->validated('remarks'), $request->user());
+
+            $this->logActivity('DELETE', 'Loan', "Deleted application {$loan->application_no}", ['reason' => $request->validated('remarks')]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Loan application deleted successfully',
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to delete loan application', $th);
+        }
+    }
+
+    /**
+     * POST /loans/{id}/restore: bring a deleted application back (find it with GET /loans?only_deleted=1).
+     */
+    public function restore(Request $request, string $publicId)
+    {
+        try {
+            $loan = Loan::onlyTrashed()->where('public_id', $publicId)->first();
+
+            if (! $loan) {
+                return $this->notFound('Deleted loan not found');
+            }
+
+            $loan = $this->applications->restore($loan, $request->user());
+
+            $this->logActivity('RESTORE', 'Loan', "Restored application {$loan->application_no}");
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Loan application restored successfully',
+                'data' => new LoanResource($this->withDetails($loan)),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to restore loan application', $th);
+        }
+    }
+
+    /**
+     * /loans/{id}/notes: the free-text notes of the timeline.
+     */
+    public function notes(Request $request, string $publicId)
+    {
+        try {
+            $loan = Loan::where('public_id', $publicId)->first();
+
+            if (! $loan) {
+                return $this->notFound('Loan not found');
+            }
+
+            $query = $loan->activities()->where('type', LoanActivityType::Note->value)->with('performer')->latest('id');
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Loan notes retrieved successfully',
+                'data' => $this->paginated($query->paginate($this->perPage($request)), LoanActivityResource::class),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to retrieve loan notes', $th);
+        }
+    }
+
+    /**
+     * A note can be corrected or removed by the person who wrote it; the old text is kept in the audit log.
+     */
+    public function updateNote(LoanRemarksRequest $request, string $publicId, int $noteId)
+    {
+        try {
+            $note = $this->ownNote($request, $publicId, $noteId);
+
+            if (! $note) {
+                return $this->notFound('Note not found');
+            }
+
+            $old = $note->remarks;
+            $note->forceFill(['remarks' => $request->validated('remarks')])->save();
+
+            $this->logActivity('UPDATE', 'Loan', "Edited a note on a loan ({$publicId})", ['note_id' => $noteId, 'old' => $old, 'new' => $note->remarks]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Note updated successfully',
+                'data' => new LoanActivityResource($note->load('performer')),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to update note', $th);
+        }
+    }
+
+    public function destroyNote(Request $request, string $publicId, int $noteId)
+    {
+        try {
+            $note = $this->ownNote($request, $publicId, $noteId);
+
+            if (! $note) {
+                return $this->notFound('Note not found');
+            }
+
+            $old = $note->remarks;
+            $note->delete();
+
+            $this->logActivity('DELETE', 'Loan', "Deleted a note on a loan ({$publicId})", ['note_id' => $noteId, 'old' => $old]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Note deleted successfully',
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to delete note', $th);
+        }
+    }
+
+    protected function ownNote(Request $request, string $publicId, int $noteId): ?LoanActivity
+    {
+        $loan = Loan::where('public_id', $publicId)->first();
+
+        return $loan?->activities()
+            ->where('type', LoanActivityType::Note->value)
+            ->where('performed_by', $request->user()->id)
+            ->find($noteId);
     }
 
     /**

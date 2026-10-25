@@ -22,8 +22,10 @@ class SettingsSeeder extends Seeder
 
         $settings = [
             /* Loans */
-            ['loan.open_loan_scope', 'loans', SettingType::String, 'submitted', ['value' => 'required|in:submitted,approved'],
-                'One open loan rule starts at', 'From which status a loan counts as open for the "one open loan per person" rule. submitted = an application that is not yet approved also blocks a new one (D-1).'],
+            ['loan.open_loan_scope', 'loans', SettingType::String, 'draft', ['value' => 'required|in:draft,submitted,approved'],
+                'One open loan rule starts at', 'From which status a loan counts as open for the "one open loan per person" rule. draft = an application in progress already blocks a second one (the officer is told at the first step); submitted = only after it is submitted; approved = only after approval.'],
+            ['loan.application_backdate_days', 'loans', SettingType::Integer, '30', ['value' => 'required|integer|min:0|max:365'],
+                'Application date can go back (days)', 'The officer may set the application date up to this many days before today (a customer who came back to finish an application). Never in the future.'],
             ['borrower.min_age', 'loans', SettingType::Integer, '18', ['value' => 'required|integer|min:18|max:70'],
                 'Minimum borrower age', 'Age in years on the application date.'],
             ['borrower.max_age_at_maturity', 'loans', SettingType::Integer, '65', ['value' => 'required|integer|min:30|max:100'],

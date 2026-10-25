@@ -10,6 +10,7 @@ use App\Models\Concerns\Audited;
 use App\Support\Lookups\LookupAttribute;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
@@ -37,6 +38,7 @@ use Illuminate\Support\Carbon;
 class LoanParty extends Model
 {
     use Audited;
+    use SoftDeletes;
 
     /**
      * Columns whose change alone is not written to the audit trail (see Concerns\Audited).

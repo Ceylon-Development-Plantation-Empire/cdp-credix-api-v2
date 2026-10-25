@@ -245,6 +245,7 @@ class GlobalSearchService
             'term_months' => $loan->tenure,
             'interest_rate' => (string) $loan->rate,
             'applied_at' => $loan->created_at?->toApiString(),
+            'application_date' => $loan->application_date?->toDateString(),
             'approved_at' => $loan->approved_at?->toApiString(),
             'disbursed_at' => $loan->disbursed_at?->toApiString(),
             'guarantor_type' => null,

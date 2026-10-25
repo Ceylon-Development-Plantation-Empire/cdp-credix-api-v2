@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Loans\AddGuarantorRequest;
 use App\Http\Requests\Loans\LoanRemarksRequest;
 use App\Http\Requests\Loans\OptionalRemarksRequest;
+use App\Http\Requests\Loans\UpdateGuarantorRequest;
 use App\Http\Resources\Loans\LoanPartyResource;
 use App\Http\Resources\Loans\LoanResource;
 use App\Models\Customer;
@@ -35,9 +36,52 @@ class LoanPartyController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Loan Guarantor Manage', only: ['addGuarantor', 'removeGuarantor']),
+            new Middleware('permission:Loan Guarantor Index', only: ['guarantors']),
+            new Middleware('permission:Loan Guarantor Create', only: ['addGuarantor']),
+            new Middleware('permission:Loan Guarantor Update', only: ['updateGuarantor']),
+            new Middleware('permission:Loan Guarantor Delete', only: ['removeGuarantor']),
             new Middleware('permission:Loan Offer Manage', only: ['acceptOffer', 'holdOffer', 'declineOffer']),
         ];
+    }
+
+    public function guarantors(string $publicId)
+    {
+        try {
+            $loan = Loan::where('public_id', $publicId)->first();
+
+            if (! $loan) {
+                return $this->notFound('Loan not found');
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Guarantors retrieved successfully',
+                'data' => LoanPartyResource::collection($loan->guarantors()->with('customer')->get()),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to retrieve guarantors', $th);
+        }
+    }
+
+    public function updateGuarantor(UpdateGuarantorRequest $request, string $publicId, int $partyId)
+    {
+        try {
+            [$loan, $party] = $this->find($publicId, $partyId);
+
+            if (! $party) {
+                return $this->notFound('Guarantor not found');
+            }
+
+            $party = $this->parties->updateGuarantor($loan, $party, $request->validated('relationship'), $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Guarantor updated successfully',
+                'data' => new LoanPartyResource($party->load('customer')),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to update guarantor', $th);
+        }
     }
 
     public function addGuarantor(AddGuarantorRequest $request, string $publicId)

@@ -15,7 +15,7 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class UpdateLoanRequest extends FormRequest
 {
-    use FormatsValidationErrors;
+    use Concerns\ApplicationFields, FormatsValidationErrors;
 
     public function authorize(): bool
     {
@@ -39,6 +39,6 @@ class UpdateLoanRequest extends FormRequest
             'members.*.customer_public_id' => ['required', 'string', 'ulid', 'distinct'],
             'members.*.amount' => ['required', 'decimal:0,2', 'gt:0', 'max:9999999999999'],
             // Custom loan fields defined as data (lookups custom_field.loan); meta is replaced as a whole.
-        ] + CustomFields::rules(LookupType::LoanField);
+        ] + $this->applicationFieldRules() + CustomFields::rules(LookupType::LoanField);
     }
 }

@@ -97,9 +97,31 @@ class LoanPartyService
                 throw new BusinessRuleException('NOT_A_GUARANTOR', 'This party is not a guarantor of this loan.', 422);
             }
 
-            $party->delete();
+            $party->forceDelete();
 
             $this->workflow->record($loan, LoanActivityType::Update, $by, "Guarantor {$party->customer->customer_no} removed");
+        });
+    }
+
+    /**
+     * Correct how the guarantor is related to the borrower. To change the person, remove and add again
+     * (the new person is checked for eligibility and gives their own consent).
+     */
+    public function updateGuarantor(Loan $loan, LoanParty $party, ?string $relationship, User $by): LoanParty
+    {
+        return DB::transaction(function () use ($loan, $party, $relationship, $by) {
+            $loan = $this->workflow->lock($loan);
+            $this->assertGuarantorWindow($loan);
+
+            if ($party->role !== PartyRole::Guarantor || $party->loan_id !== $loan->id) {
+                throw new BusinessRuleException('NOT_A_GUARANTOR', 'This party is not a guarantor of this loan.', 422);
+            }
+
+            $party->forceFill(['relationship' => $relationship])->save();
+
+            $this->workflow->record($loan, LoanActivityType::Update, $by, "Guarantor {$party->customer->customer_no} updated");
+
+            return $party;
         });
     }
 

@@ -71,7 +71,7 @@ class CorePolicyHoldController extends Controller
                             'name' => $loan->customer?->full_name,
                             'id_number' => Mask::idNumber($loan->customer?->normalizedIdNumber()),
                         ],
-                        'applied_at' => $loan->created_at?->toDateString(),
+                        'applied_at' => ($loan->application_date ?? $loan->created_at)?->toDateString(),
                     ];
                 })->values(),
             ],

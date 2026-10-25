@@ -153,7 +153,7 @@ class DashboardService
         $rejected = $loans()->where('status', LoanStatus::Rejected->value)->whereBetween('closed_at', [$start, $end])->count();
 
         return [
-            'received' => $loans()->whereBetween('created_at', [$start, $end])->count(),
+            'received' => $loans()->whereDate('application_date', '>=', $from->toDateString())->whereDate('application_date', '<=', $to->toDateString())->count(),
             'approved' => $approved,
             'rejected' => $rejected,
             'approval_rate' => $approved + $rejected === 0 ? null : (string) Money::divide($approved * 100, $approved + $rejected)->toScale(2, RoundingMode::HALF_UP),
@@ -343,6 +343,7 @@ class DashboardService
                 'amount' => $this->money($l->requested_amount),
                 'status' => $l->status->value,
                 'applied_at' => $l->created_at?->toApiString(),
+                'application_date' => $l->application_date?->toDateString(),
             ])->all();
     }
 

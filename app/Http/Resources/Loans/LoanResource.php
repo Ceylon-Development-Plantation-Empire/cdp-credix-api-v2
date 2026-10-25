@@ -53,7 +53,13 @@ class LoanResource extends JsonResource
                 'on_hold_at' => $this->offer_on_hold_at?->toApiString(),
                 'remarks' => $this->offer_remarks,
             ],
+            'special_open_loan' => $this->multiple_open_at === null ? null : [
+                'reason' => $this->multiple_open_reason,
+                'allowed_by' => $this->multipleOpenBy ? ['id' => $this->multipleOpenBy->id, 'name' => $this->multipleOpenBy->name] : null,
+                'allowed_at' => $this->multiple_open_at?->toApiString(),
+            ],
             'dates' => [
+                'application_date' => $this->application_date?->toDateString(),
                 'submitted_at' => $this->submitted_at?->toApiString(),
                 'approved_at' => $this->approved_at?->toApiString(),
                 'accepted_at' => $this->accepted_at?->toApiString(),

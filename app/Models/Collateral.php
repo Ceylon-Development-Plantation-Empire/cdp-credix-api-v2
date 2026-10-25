@@ -11,6 +11,7 @@ use App\Models\Concerns\HasPublicId;
 use App\Support\Lookups\LookupAttribute;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
@@ -23,6 +24,7 @@ class Collateral extends Model
 {
     use Audited;
     use HasPublicId;
+    use SoftDeletes;
 
     /**
      * LTV, plan, eligible amount and the status columns are set by CollateralService.

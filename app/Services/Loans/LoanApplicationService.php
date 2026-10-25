@@ -15,10 +15,13 @@ use App\Exceptions\BusinessRuleException;
 use App\Finance\Support\Money;
 use App\Models\BorrowerGroup;
 use App\Models\BorrowerGroupMember;
+use App\Models\Collateral;
 use App\Models\Customer;
 use App\Models\Loan;
+use App\Models\LoanParty;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\BusinessDate;
 use App\Traits\ActivityLogTrait;
 use Brick\Math\BigDecimal;
 use Illuminate\Support\Collection;
@@ -62,9 +65,11 @@ class LoanApplicationService
             $tenure = (int) $data['tenure'];
             $this->assertTenure($terms, $tenure);
 
+            $special = $this->multipleOpenColumns($data, $user);
+
             return $type === BorrowerType::Group
-                ? $this->createGroupFacility($product, $data, $tenure, $user)
-                : $this->createIndividualOrJoint($product, $type, $data, $tenure, $user);
+                ? $this->createGroupFacility($product, $data, $tenure, $user, $special)
+                : $this->createIndividualOrJoint($product, $type, $data, $tenure, $user, $special);
         });
     }
 
@@ -81,6 +86,20 @@ class LoanApplicationService
         return DB::transaction(function () use ($loan, $data, $user) {
             $loan = $this->workflow->lock($loan);
             $this->assertEditable($loan);
+
+            // First, so the checks below already see whether the application is a special case.
+            if (array_key_exists('allow_multiple_open', $data)) {
+                $this->applyMultipleOpen($loan, $data, $user);
+            }
+
+            // The date the customer applied: set again when he came back to finish the application.
+            if (isset($data['application_date'])) {
+                $loan->application_date = $data['application_date'];
+
+                if ($loan->isGroupFacility()) {
+                    $loan->memberLoans()->open()->update(['application_date' => $data['application_date']]);
+                }
+            }
 
             $terms = $this->pricing->termsOf($loan);
             $tenure = (int) ($data['tenure'] ?? $loan->tenure);
@@ -110,6 +129,118 @@ class LoanApplicationService
             $loan->save();
 
             $this->workflow->record($loan, LoanActivityType::Update, $user, 'Application updated', ['fields' => array_keys($data)]);
+
+            return $loan->refresh();
+        });
+    }
+
+    /**
+     * Delete an application that was never paid out. The row is kept (soft delete); the people, security
+     * and documents attached to it are removed so they no longer count against the customer's limits.
+     * A loan that has a schedule, a payment or an active status is part of the books and can only be
+     * settled, cancelled or written off.
+     */
+    public function delete(Loan $loan, string $reason, User $user): void
+    {
+        DB::transaction(function () use ($loan, $reason, $user) {
+            $loan = $this->workflow->lock($loan);
+
+            if ($loan->isMemberLoan()) {
+                throw new BusinessRuleException('MEMBER_LOAN_ACTION', 'Delete the group facility; its member loans go with it.', 422);
+            }
+
+            $loans = $loan->isGroupFacility() ? $loan->memberLoans()->get()->prepend($loan) : collect([$loan]);
+
+            foreach ($loans as $each) {
+                if (! in_array($each->status, [LoanStatus::Draft, LoanStatus::Returned, LoanStatus::Rejected, LoanStatus::Cancelled], true)
+                    || $each->installments()->exists()) {
+                    throw new BusinessRuleException('LOAN_NOT_DELETABLE', 'Only an application that was never paid out (draft, returned, rejected or cancelled) can be deleted.', 409);
+                }
+            }
+
+            // One timestamp on the loan and on everything that goes with it: restore brings back exactly those rows.
+            $at = now();
+
+            foreach ($loans as $each) {
+                $this->workflow->record($each, LoanActivityType::Update, $user, "Application deleted: {$reason}");
+
+                // The borrowers let go of their open-loan key, so the customer can apply again.
+                $each->parties()->update(['open_loan_key' => null, 'deleted_at' => $at]);
+                $each->documents()->update(['deleted_at' => $at]);
+
+                foreach ($each->collaterals()->get() as $collateral) {
+                    $collateral->documents()->update(['deleted_at' => $at]);
+                }
+
+                $each->collaterals()->update(['deleted_at' => $at]);
+                Loan::whereKey($each->id)->update(['updated_by' => $user->id, 'deleted_at' => $at]);
+            }
+        });
+    }
+
+    /**
+     * Bring a deleted application back with its guarantors, collateral and documents, as it was.
+     * The people on it are checked again: a customer who has opened another loan since, or a guarantor
+     * who has reached the guarantee limit, stops the restore.
+     */
+    public function restore(Loan $loan, User $user): Loan
+    {
+        return DB::transaction(function () use ($loan, $user) {
+            $loan = Loan::withTrashed()->whereKey($loan->id)->lockForUpdate()->firstOrFail();
+
+            if (! $loan->trashed()) {
+                throw new BusinessRuleException('LOAN_NOT_DELETED', 'This application is not deleted.', 409);
+            }
+
+            if ($loan->isMemberLoan()) {
+                throw new BusinessRuleException('MEMBER_LOAN_ACTION', 'Restore the group facility; its member loans come back with it.', 422);
+            }
+
+            $at = $loan->deleted_at->toDateTimeString();
+            $loans = collect([$loan]);
+
+            if ($loan->isGroupFacility()) {
+                $loans = $loans->merge(Loan::onlyTrashed()->where('parent_id', $loan->id)->where('deleted_at', $at)->get());
+            }
+
+            // The guarantee limit and the guarantor's standing are checked as for a new guarantor.
+            foreach ($loans as $each) {
+                LoanParty::onlyTrashed()->with('customer')->where('loan_id', $each->id)->where('deleted_at', $at)
+                    ->where('role', PartyRole::Guarantor->value)->whereNull('released_at')->get()
+                    ->each(fn (LoanParty $party) => $this->eligibility->assertNone($this->eligibility->guarantorProblems($party->customer, $each->id), $party->customer));
+            }
+
+            // The one-open-loan rule applies to what is brought back, unless it was a special case.
+            foreach ($loans->reject(fn (Loan $each) => $each->multiple_open_at !== null || $each->status->isClosed()) as $each) {
+                LoanParty::onlyTrashed()->with('customer')->where('loan_id', $each->id)->where('deleted_at', $at)
+                    ->whereIn('role', PartyRole::borrowingValues())->get()
+                    ->each(function (LoanParty $party) use ($each) {
+                        if ($open = $this->eligibility->openLoanOf($party->customer, [$each->id])) {
+                            throw new BusinessRuleException('BORROWER_HAS_OPEN_LOAN', "{$party->customer->full_name} ({$party->customer->customer_no}) already has an open loan or application: {$open->application_no}.", 409, ['loan' => ['public_id' => $open->public_id, 'application_no' => $open->application_no, 'status' => $open->status->value]]);
+                        }
+                    });
+            }
+
+            foreach ($loans as $each) {
+                $each->documents()->onlyTrashed()->where('deleted_at', $at)->restore();
+
+                foreach (Collateral::onlyTrashed()->where('loan_id', $each->id)->where('deleted_at', $at)->get() as $collateral) {
+                    $collateral->documents()->onlyTrashed()->where('deleted_at', $at)->restore();
+                    $collateral->restore();
+                }
+
+                LoanParty::onlyTrashed()->where('loan_id', $each->id)->where('deleted_at', $at)->restore();
+                $each->restore();
+            }
+
+            // A returned application held its borrowers' open-loan key; the unique index refuses a second open loan.
+            $this->workflow->reclaimOpenLoanKeys($loans);
+
+            foreach ($loans as $each) {
+                $this->workflow->record($each, LoanActivityType::Update, $user, 'Application restored');
+            }
+
+            $loan->forceFill(['updated_by' => $user->id])->save();
 
             return $loan->refresh();
         });
@@ -156,7 +287,7 @@ class LoanApplicationService
                 // L-1 and L-2: every borrowing person, KYC included.
                 foreach ($each->borrowingParties()->with('customer')->get() as $party) {
                     $this->eligibility->assertNone(
-                        $this->eligibility->borrowerProblems($party->customer, $loan->tenure, RepaymentFrequency::from($terms['repayment_frequency']), true, $ignore),
+                        $this->eligibility->borrowerProblems($party->customer, $loan->tenure, RepaymentFrequency::from($terms['repayment_frequency']), true, $ignore, $each->multiple_open_at !== null),
                         $party->customer,
                     );
                 }
@@ -221,8 +352,9 @@ class LoanApplicationService
 
     /**
      * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $special  The special-case columns (see multipleOpenColumns), empty for an ordinary application.
      */
-    protected function createIndividualOrJoint(Product $product, BorrowerType $type, array $data, int $tenure, User $user): Loan
+    protected function createIndividualOrJoint(Product $product, BorrowerType $type, array $data, int $tenure, User $user, array $special = []): Loan
     {
         $terms = $this->pricing->snapshot($product);
         $this->assertAmount($terms, $data['requested_amount']);
@@ -240,7 +372,7 @@ class LoanApplicationService
 
         // KYC is required at submission, not now, so the officer can start the application first.
         foreach ([$borrower, ...$coBorrowers] as $customer) {
-            $this->eligibility->assertNone($this->eligibility->borrowerProblems($customer, $tenure, $product->repayment_frequency, false), $customer);
+            $this->eligibility->assertNone($this->eligibility->borrowerProblems($customer, $tenure, $product->repayment_frequency, false, [], $special !== []), $customer);
         }
 
         $loan = $this->newLoan($product, [
@@ -249,9 +381,12 @@ class LoanApplicationService
             'customer_id' => $borrower->id,
             'requested_amount' => $data['requested_amount'],
             'tenure' => $tenure,
+            'application_date' => $data['application_date'] ?? BusinessDate::todayImmutable()->toDateString(),
             'purpose' => $data['purpose'] ?? null,
             'meta' => $data['meta'] ?? null,
         ], $user);
+
+        $this->markSpecialCase($loan, $special, $user);
 
         $loan->parties()->create(['customer_id' => $borrower->id, 'role' => PartyRole::Borrower]);
 
@@ -266,8 +401,9 @@ class LoanApplicationService
 
     /**
      * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $special
      */
-    protected function createGroupFacility(Product $product, array $data, int $tenure, User $user): Loan
+    protected function createGroupFacility(Product $product, array $data, int $tenure, User $user, array $special = []): Loan
     {
         $group = BorrowerGroup::where('public_id', $data['borrower_group_public_id'])->first();
 
@@ -290,10 +426,12 @@ class LoanApplicationService
             // The facility row is inserted before its member loans exist, and the amount check needs > 0.
             'requested_amount' => (string) Money::sum(array_column($data['members'], 'amount')),
             'tenure' => $tenure,
+            'application_date' => $data['application_date'] ?? BusinessDate::todayImmutable()->toDateString(),
             'purpose' => $data['purpose'] ?? null,
             'meta' => $data['meta'] ?? null,
         ], $user);
 
+        $this->markSpecialCase($facility, $special, $user);
         $this->syncMembers($facility, $data['members'], $user);
         $facility->requested_amount = (string) Money::sum($facility->memberLoans()->open()->pluck('requested_amount'));
         $facility->save();
@@ -343,7 +481,7 @@ class LoanApplicationService
             }
 
             $this->eligibility->assertNone(
-                $this->eligibility->borrowerProblems($row['customer'], $facility->tenure, RepaymentFrequency::from($terms['repayment_frequency']), false),
+                $this->eligibility->borrowerProblems($row['customer'], $facility->tenure, RepaymentFrequency::from($terms['repayment_frequency']), false, [], $facility->multiple_open_at !== null),
                 $row['customer'],
             );
 
@@ -355,10 +493,16 @@ class LoanApplicationService
                 'customer_id' => $customerId,
                 'requested_amount' => $row['amount'],
                 'tenure' => $facility->tenure,
+                'application_date' => $facility->application_date?->toDateString(),
                 'purpose' => $facility->purpose,
             ], $user);
 
-            $memberLoan->forceFill(['status' => $facility->status])->save();
+            $memberLoan->forceFill([
+                'status' => $facility->status,
+                'multiple_open_by' => $facility->multiple_open_by,
+                'multiple_open_reason' => $facility->multiple_open_reason,
+                'multiple_open_at' => $facility->multiple_open_at,
+            ])->save();
             $memberLoan->parties()->create(['customer_id' => $customerId, 'role' => PartyRole::GroupMember]);
         }
     }
@@ -378,14 +522,14 @@ class LoanApplicationService
             throw new BusinessRuleException('DUPLICATE_PARTY', 'A person can have only one role on a loan.', 422);
         }
 
-        $loan->parties()->where('role', PartyRole::CoBorrower->value)->whereNotIn('customer_id', $customers->pluck('id'))->delete();
+        $loan->parties()->where('role', PartyRole::CoBorrower->value)->whereNotIn('customer_id', $customers->pluck('id'))->forceDelete();
 
         foreach ($customers as $customer) {
             if ($loan->parties()->where('customer_id', $customer->id)->exists()) {
                 continue;
             }
 
-            $this->eligibility->assertNone($this->eligibility->borrowerProblems($customer, $loan->tenure, $loan->repayment_frequency, false, [$loan->id]), $customer);
+            $this->eligibility->assertNone($this->eligibility->borrowerProblems($customer, $loan->tenure, $loan->repayment_frequency, false, [$loan->id], $loan->multiple_open_at !== null), $customer);
             $loan->parties()->create(['customer_id' => $customer->id, 'role' => PartyRole::CoBorrower]);
         }
     }
@@ -506,6 +650,85 @@ class LoanApplicationService
         if (! $loan->status->isEditable()) {
             throw new BusinessRuleException('LOAN_NOT_EDITABLE', 'An application can only be changed while it is a draft or after it was returned for correction.', 409);
         }
+    }
+
+    /**
+     * The special case: a customer may have more than one open loan. Only for someone holding
+     * "Loan Multiple Open Allow", with a written reason. Returns the columns that record it, or nothing.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    protected function multipleOpenColumns(array $data, User $user): array
+    {
+        if (! ($data['allow_multiple_open'] ?? false)) {
+            return [];
+        }
+
+        if (! $user->can('Loan Multiple Open Allow')) {
+            throw new BusinessRuleException('MULTIPLE_OPEN_NOT_ALLOWED', 'Only someone with the permission "Loan Multiple Open Allow" can give a customer more than one open loan.', 403);
+        }
+
+        return ['multiple_open_by' => $user->id, 'multiple_open_reason' => $data['multiple_open_reason'], 'multiple_open_at' => now()];
+    }
+
+    /**
+     * @param  array<string, mixed>  $special
+     */
+    protected function markSpecialCase(Loan $loan, array $special, User $user): void
+    {
+        if ($special === []) {
+            return;
+        }
+
+        $loan->forceFill($special)->save();
+        $this->workflow->record($loan, LoanActivityType::Update, $user, "Special case: more than one open loan allowed. Reason: {$special['multiple_open_reason']}");
+        $this->logActivity('SPECIAL_OPEN_LOAN', 'Loan', "Allowed more than one open loan for {$loan->application_no}", ['reason' => $special['multiple_open_reason']]);
+    }
+
+    /**
+     * Turn the special case on or off for an application that can still be edited.
+     * Turning it off makes the ordinary rule apply again, so it is refused while the customer has another open loan.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function applyMultipleOpen(Loan $loan, array $data, User $user): void
+    {
+        if ($data['allow_multiple_open'] ?? false) {
+            $special = $this->multipleOpenColumns($data, $user);
+
+            $loan->forceFill($special)->save();
+
+            if ($loan->isGroupFacility()) {
+                $loan->memberLoans()->open()->update($special);
+            }
+
+            $this->markSpecialCase($loan, $special, $user);
+
+            return;
+        }
+
+        if ($loan->multiple_open_at === null) {
+            return;
+        }
+
+        $off = ['multiple_open_by' => null, 'multiple_open_reason' => null, 'multiple_open_at' => null];
+        $loan->forceFill($off)->save();
+
+        if ($loan->isGroupFacility()) {
+            $loan->memberLoans()->open()->update($off);
+        }
+
+        foreach ($this->borrowingLoans($loan) as $each) {
+            foreach ($each->borrowingParties()->with('customer')->get() as $party) {
+                $this->eligibility->assertNone(
+                    $this->eligibility->borrowerProblems($party->customer, $loan->tenure, $loan->repayment_frequency, false, $loan->idsWithMemberLoans()),
+                    $party->customer,
+                );
+            }
+        }
+
+        $this->workflow->record($loan, LoanActivityType::Update, $user, 'Special case withdrawn: the ordinary one-open-loan rule applies');
     }
 
     /**

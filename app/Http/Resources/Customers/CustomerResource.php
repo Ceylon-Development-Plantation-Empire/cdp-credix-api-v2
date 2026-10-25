@@ -27,6 +27,8 @@ class CustomerResource extends JsonResource
         return [
             'public_id' => $this->public_id,
             'customer_no' => $this->customer_no,
+            // Shown from the first step: a customer with an open loan or an application in progress cannot start another.
+            'open_loan' => app(\App\Services\Loans\EligibilityService::class)->summary(app(\App\Services\Loans\EligibilityService::class)->openLoanOf($this->resource)),
             'branch' => $this->whenLoaded('branch', fn () => ['id' => $this->branch->id, 'name' => $this->branch->name]),
             'identity' => [
                 'id_type' => $this->id_type->value,

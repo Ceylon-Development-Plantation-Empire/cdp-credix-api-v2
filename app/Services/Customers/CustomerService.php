@@ -127,6 +127,8 @@ class CustomerService
             'branch' => $customer->branch?->name,
             'accessible' => $accessible,
             'public_id' => $accessible ? $customer->public_id : null,
+            // So the officer sees at once that this person already has a loan or an application in progress.
+            'open_loan' => $accessible ? app(\App\Services\Loans\EligibilityService::class)->summary(app(\App\Services\Loans\EligibilityService::class)->openLoanOf($customer)) : null,
         ];
     }
 

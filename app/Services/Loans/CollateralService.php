@@ -38,6 +38,8 @@ class CollateralService
     /**
      * Collateral can be added or removed until the application is verified.
      */
+    protected const FILLABLE = ['type', 'owner_customer_id', 'description', 'details', 'market_value', 'forced_sale_value', 'valued_on', 'valued_by'];
+
     protected const CHANGE_WINDOW = [LoanStatus::Draft, LoanStatus::Submitted, LoanStatus::InReview, LoanStatus::Returned];
 
     public function __construct(
@@ -94,54 +96,97 @@ class CollateralService
             $loan = $this->workflow->lock($loan);
             $this->assertChangeWindow($loan);
 
-            $type = (string) $data['type'];
-            $label = $this->types->label($type);
-            $rule = collect($this->pricing->termsOf($loan)['collateral_rules'])->firstWhere('collateral_type', $type);
+            $a = $this->attributes($loan, $data);
 
-            // Security is recorded as data: no lending limit is applied and no kind of security is refused.
-            // The product's % (when it has one for this type) is only copied on for information.
-            $percent = $rule ? (string) $rule['max_ltv_percent'] : '100.00';
+            $collateral = new Collateral(Arr::only($a, self::FILLABLE) + ['loan_id' => $loan->id, 'created_by' => $by->id]);
+            $collateral->forceFill(['ltv_percent' => $a['ltv_percent'], 'eligible_amount' => $a['eligible_amount']])->save();
 
-            $ownerId = null;
-
-            if (! empty($data['owner_customer_public_id'])) {
-                $owner = Customer::where('public_id', $data['owner_customer_public_id'])->first();
-
-                // The owner must be on the loan, so the pledge is backed by someone who signs for it.
-                if (! $owner || ! LoanParty::whereIn('loan_id', $loan->idsWithMemberLoans())->where('customer_id', $owner->id)->exists()) {
-                    throw new BusinessRuleException('COLLATERAL_OWNER_NOT_PARTY', 'The owner of the collateral must be a borrower or guarantor on this loan.', 422);
-                }
-
-                $ownerId = $owner->id;
-            }
-
-            $details = Arr::only($data['details'] ?? [], array_keys($this->types->fieldRules($type)));
-            $value = $this->types->valuation($type) === CollateralValuation::GoldWeight
-                ? $this->gold->value($details['net_weight_g'], (int) $details['karat'], $details['rate_per_gram_24k'])
-                : Money::of($data['market_value']);
-
-            $collateral = new Collateral([
-                'loan_id' => $loan->id,
-                'type' => $type,
-                'owner_customer_id' => $ownerId,
-                'description' => $data['description'],
-                'details' => $details,
-                'market_value' => (string) $value,
-                'forced_sale_value' => $data['forced_sale_value'] ?? null,
-                'valued_on' => $data['valued_on'],
-                'valued_by' => $data['valued_by'] ?? null,
-                'created_by' => $by->id,
-            ]);
-
-            $collateral->forceFill([
-                'ltv_percent' => $percent,
-                'eligible_amount' => (string) $this->gold->eligibleAmount($value, $percent),
-            ])->save();
-
-            $this->workflow->record($loan, LoanActivityType::Update, $by, "Collateral added: {$label} ({$collateral->public_id}), value {$value}");
+            $this->workflow->record($loan, LoanActivityType::Update, $by, "Collateral added: {$a['label']} ({$collateral->public_id}), value {$a['market_value']}");
 
             return $collateral;
         });
+    }
+
+    /**
+     * Correct a pledged item. Only a proposed collateral can change: once a second person has verified
+     * it, the valuation and documents they checked must not move under them.
+     *
+     * @param  array<string, mixed>  $data  Validated CollateralRequest data.
+     */
+    public function update(Collateral $collateral, array $data, User $by): Collateral
+    {
+        return DB::transaction(function () use ($collateral, $data, $by) {
+            $loan = $this->workflow->lock($collateral->loan);
+            $this->assertChangeWindow($loan);
+
+            $collateral = Collateral::whereKey($collateral->id)->lockForUpdate()->firstOrFail();
+
+            if ($collateral->status !== CollateralStatus::Proposed) {
+                throw new BusinessRuleException('COLLATERAL_NOT_EDITABLE', 'Only a proposed collateral can be edited; it has already been verified.', 409);
+            }
+
+            if ((string) $data['type'] !== $collateral->type && $collateral->documents()->exists()) {
+                throw new BusinessRuleException('COLLATERAL_TYPE_HAS_DOCUMENTS', 'The type cannot change once documents were uploaded; remove the collateral and add it again.', 409);
+            }
+
+            $a = $this->attributes($loan, $data);
+
+            $collateral->fill(Arr::only($a, self::FILLABLE));
+            $collateral->forceFill(['ltv_percent' => $a['ltv_percent'], 'eligible_amount' => $a['eligible_amount']])->save();
+
+            $this->workflow->record($loan, LoanActivityType::Update, $by, "Collateral updated: {$a['label']} ({$collateral->public_id}), value {$a['market_value']}");
+
+            return $collateral;
+        });
+    }
+
+    /**
+     * The columns a collateral request fills: owner, valuation and the type's own details.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    protected function attributes(Loan $loan, array $data): array
+    {
+        $type = (string) $data['type'];
+        $label = $this->types->label($type);
+        $rule = collect($this->pricing->termsOf($loan)['collateral_rules'])->firstWhere('collateral_type', $type);
+
+        // Security is recorded as data: no lending limit is applied and no kind of security is refused.
+        // The product's % (when it has one for this type) is only copied on for information.
+        $percent = $rule ? (string) $rule['max_ltv_percent'] : '100.00';
+
+        $ownerId = null;
+
+        if (! empty($data['owner_customer_public_id'])) {
+            $owner = Customer::where('public_id', $data['owner_customer_public_id'])->first();
+
+            // The owner must be on the loan, so the pledge is backed by someone who signs for it.
+            if (! $owner || ! LoanParty::whereIn('loan_id', $loan->idsWithMemberLoans())->where('customer_id', $owner->id)->exists()) {
+                throw new BusinessRuleException('COLLATERAL_OWNER_NOT_PARTY', 'The owner of the collateral must be a borrower or guarantor on this loan.', 422);
+            }
+
+            $ownerId = $owner->id;
+        }
+
+        $details = Arr::only($data['details'] ?? [], array_keys($this->types->fieldRules($type)));
+        $value = $this->types->valuation($type) === CollateralValuation::GoldWeight
+            ? $this->gold->value($details['net_weight_g'], (int) $details['karat'], $details['rate_per_gram_24k'])
+            : Money::of($data['market_value']);
+
+        return [
+            'type' => $type,
+            'label' => $label,
+            'owner_customer_id' => $ownerId,
+            'description' => $data['description'],
+            'details' => $details,
+            'market_value' => (string) $value,
+            'forced_sale_value' => $data['forced_sale_value'] ?? null,
+            'valued_on' => $data['valued_on'],
+            'valued_by' => $data['valued_by'] ?? null,
+            'ltv_percent' => $percent,
+            'eligible_amount' => (string) $this->gold->eligibleAmount($value, $percent),
+        ];
     }
 
     /**
@@ -225,7 +270,7 @@ class CollateralService
             }
 
             $collateral->documents()->delete();
-            $collateral->delete();
+            $collateral->forceDelete();
 
             $this->workflow->record($loan, LoanActivityType::Update, $by, "Collateral removed ({$collateral->public_id})");
         });

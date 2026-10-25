@@ -45,6 +45,10 @@ class LoanListResource extends JsonResource
             'pricing_method' => $this->pricing_method?->value,
             'status' => $this->status->value,
             'days_past_due' => $this->days_past_due,
+            // The day the customer applied (chosen by the officer); created_at is when the record was really saved.
+            'application_date' => $this->application_date?->toDateString(),
+            // True when this loan was given as a special case, a second open loan for the customer.
+            'multiple_open' => $this->multiple_open_at !== null,
             'created_at' => $this->created_at?->toApiString(),
         ];
     }

@@ -18,7 +18,7 @@ class AddGuarantorRequest extends FormRequest
     use FormatsValidationErrors;
 
     /**
-     * Permission is checked by the controller middleware (Loan Guarantor Manage).
+     * Permission is checked by the controller middleware (Loan Guarantor Create).
      */
     public function authorize(): bool
     {

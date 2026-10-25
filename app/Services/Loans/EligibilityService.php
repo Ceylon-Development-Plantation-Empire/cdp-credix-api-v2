@@ -9,6 +9,7 @@ use App\Enums\PartyRole;
 use App\Enums\RepaymentFrequency;
 use App\Exceptions\BusinessRuleException;
 use App\Models\Customer;
+use App\Models\Loan;
 use App\Models\LoanParty;
 use App\Models\Setting;
 use App\Support\BusinessDate;
@@ -27,7 +28,7 @@ class EligibilityService
      * @param  list<int>  $ignoreLoanIds  The application being checked (and its member loans), which must not block itself.
      * @return list<array{code: string, message: string}>
      */
-    public function borrowerProblems(Customer $customer, int $tenure, RepaymentFrequency $frequency, bool $requireKyc, array $ignoreLoanIds = []): array
+    public function borrowerProblems(Customer $customer, int $tenure, RepaymentFrequency $frequency, bool $requireKyc, array $ignoreLoanIds = [], bool $allowMultipleOpen = false): array
     {
         $problems = [];
 
@@ -50,8 +51,13 @@ class EligibilityService
             $problems[] = $this->problem('BORROWER_TOO_OLD_AT_MATURITY', "The borrower would be older than {$maxAgeAtMaturity} when the loan ends. Choose a shorter tenure.");
         }
 
-        if ($this->hasOpenLoan($customer, $ignoreLoanIds)) {
-            $problems[] = $this->problem('BORROWER_HAS_OPEN_LOAN', 'The customer already has an open loan or application.');
+        // A loan given as a special case (Loan Multiple Open Allow) is not stopped by the rule.
+        if (! $allowMultipleOpen && ($open = $this->openLoanOf($customer, $ignoreLoanIds))) {
+            $problems[] = $this->problem(
+                'BORROWER_HAS_OPEN_LOAN',
+                "The customer already has an open loan or application: {$open->application_no} ({$open->status->value}). Continue that one instead of starting another.",
+                ['loan' => ['public_id' => $open->public_id, 'application_no' => $open->application_no, 'loan_no' => $open->loan_no, 'status' => $open->status->value]],
+            );
         }
 
         if ($this->isBlockedGuarantor($customer)) {
@@ -106,17 +112,57 @@ class EligibilityService
     }
 
     /**
-     * L-1. Borrowing parties hold open_loan_key while their loan is open (see LoanWorkflowService).
-     * Drafts never hold a key, so a forgotten draft does not block anyone.
+     * L-1. The customer's open loan, if any, found from the first step so the officer is told before filling anything in:
+     * - a loan that holds the customer's open_loan_key (submitted or later, a written-off debt included: the database
+     *   refuses a second one even when two applications are submitted at the same moment);
+     * - a loan given as a special case (no key, so it is looked for here);
+     * - while the setting loan.open_loan_scope is "draft" (the default), any application still in progress, drafts too.
      *
+     * @param  list<int>  $ignoreLoanIds
+     */
+    public function openLoanOf(Customer $customer, array $ignoreLoanIds = []): ?Loan
+    {
+        $keyed = LoanParty::query()
+            ->where('open_loan_key', $customer->id)
+            ->when($ignoreLoanIds, fn ($q) => $q->whereNotIn('loan_id', $ignoreLoanIds))
+            ->value('loan_id');
+
+        if ($keyed !== null) {
+            return Loan::withoutGlobalScope('branch')->find($keyed);
+        }
+
+        $draftsCount = Setting::value('loan.open_loan_scope', 'draft') === 'draft';
+
+        return Loan::withoutGlobalScope('branch')
+            ->open()
+            ->when($ignoreLoanIds, fn ($q) => $q->whereNotIn('id', $ignoreLoanIds))
+            ->whereHas('parties', fn ($p) => $p->where('customer_id', $customer->id)->whereIn('role', PartyRole::borrowingValues())->whereNull('released_at'))
+            ->when(! $draftsCount, fn ($q) => $q->whereNotNull('multiple_open_at'))
+            ->orderBy('id')
+            ->first();
+    }
+
+    /**
+     * The loan in a few fields, for screens that tell the officer "this customer already has one".
+     *
+     * @return array<string, mixed>|null
+     */
+    public function summary(?Loan $loan): ?array
+    {
+        return $loan === null ? null : [
+            'public_id' => $loan->public_id,
+            'application_no' => $loan->application_no,
+            'loan_no' => $loan->loan_no,
+            'status' => $loan->status->value,
+        ];
+    }
+
+    /**
      * @param  list<int>  $ignoreLoanIds
      */
     public function hasOpenLoan(Customer $customer, array $ignoreLoanIds = []): bool
     {
-        return LoanParty::query()
-            ->where('open_loan_key', $customer->id)
-            ->when($ignoreLoanIds, fn ($q) => $q->whereNotIn('loan_id', $ignoreLoanIds))
-            ->exists();
+        return $this->openLoanOf($customer, $ignoreLoanIds) !== null;
     }
 
     /**
@@ -168,10 +214,11 @@ class EligibilityService
     }
 
     /**
-     * @return array{code: string, message: string}
+     * @param  array<string, mixed>  $extra
+     * @return array<string, mixed>
      */
-    protected function problem(string $code, string $message): array
+    protected function problem(string $code, string $message, array $extra = []): array
     {
-        return ['code' => $code, 'message' => $message];
+        return ['code' => $code, 'message' => $message] + $extra;
     }
 }

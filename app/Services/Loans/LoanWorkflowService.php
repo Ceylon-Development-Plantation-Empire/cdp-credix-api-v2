@@ -238,8 +238,34 @@ class LoanWorkflowService
      *
      * @param  list<int>  $loanIds
      */
+    /**
+     * A restored application takes back the open-loan keys it held before it was deleted. Only a returned
+     * application held them (a draft never does, a rejected or cancelled one released them).
+     *
+     * @param  iterable<Loan>  $loans
+     */
+    public function reclaimOpenLoanKeys(iterable $loans): void
+    {
+        if ($this->openFrom() !== LoanStatus::Submitted) {
+            return;
+        }
+
+        $ids = collect($loans)->filter(fn (Loan $loan) => $loan->status === LoanStatus::Returned)->pluck('id')->all();
+
+        if ($ids !== []) {
+            $this->claimOpenLoanKeys($ids);
+        }
+    }
+
     protected function claimOpenLoanKeys(array $loanIds): void
     {
+        // A loan given as a special case (more than one open loan) takes no key: the unique index would refuse it.
+        $loanIds = Loan::withoutGlobalScope('branch')->whereIn('id', $loanIds)->whereNull('multiple_open_at')->pluck('id')->all();
+
+        if ($loanIds === []) {
+            return;
+        }
+
         $parties = LoanParty::with('customer')->whereIn('loan_id', $loanIds)->whereIn('role', PartyRole::borrowingValues())->get();
 
         foreach ($parties as $party) {

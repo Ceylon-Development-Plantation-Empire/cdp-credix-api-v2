@@ -211,7 +211,7 @@ class LoanReviewService
 
             // L-1, L-2 (borrowers) and G-1, G-3, G-5 (guarantors).
             $personal = $party->role->isBorrowing()
-                ? $this->eligibility->borrowerProblems($customer, $tenure ?? $loan->tenure, $frequency, true, $loanIds)
+                ? $this->eligibility->borrowerProblems($customer, $tenure ?? $loan->tenure, $frequency, true, $loanIds, $party->loan?->multiple_open_at !== null)
                 : $this->guarantorProblems($loan, $party);
 
             foreach ($personal as $problem) {

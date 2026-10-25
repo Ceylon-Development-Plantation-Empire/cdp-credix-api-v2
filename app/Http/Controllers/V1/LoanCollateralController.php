@@ -36,8 +36,10 @@ class LoanCollateralController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Loan Index', only: ['index']),
-            new Middleware('permission:Loan Collateral Manage', only: ['store', 'storeInvestment', 'destroy']),
+            new Middleware('permission:Loan Collateral Index', only: ['index']),
+            new Middleware('permission:Loan Collateral Create', only: ['store', 'storeInvestment']),
+            new Middleware('permission:Loan Collateral Update', only: ['update']),
+            new Middleware('permission:Loan Collateral Delete', only: ['destroy']),
             new Middleware('permission:Loan Collateral Verify', only: ['verify']),
             new Middleware('permission:Loan Collateral Perfect', only: ['perfect']),
             new Middleware('permission:Document Upload', only: ['uploadDocument']),
@@ -81,6 +83,25 @@ class LoanCollateralController extends Controller implements HasMiddleware
             ], 201);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to add collateral', $th);
+        }
+    }
+
+    public function update(CollateralRequest $request, string $publicId, string $collateralId)
+    {
+        try {
+            $collateral = $this->find($publicId, $collateralId);
+
+            if (! $collateral) {
+                return $this->notFound('Collateral not found');
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Collateral updated successfully',
+                'data' => new CollateralResource($this->collaterals->update($collateral, $request->validated(), $request->user())->load(['owner', 'documents.documentType'])),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to update collateral', $th);
         }
     }
 

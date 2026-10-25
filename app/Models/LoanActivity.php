@@ -12,10 +12,17 @@ use LogicException;
 
 /**
  * One entry of a loan's timeline. Written once and never edited: the maker-checker rules rely on it.
+ * The exception is the free text people write (a note, a call, a visit, a promise to pay), which its author
+ * may correct or remove; the change is audited.
  */
 class LoanActivity extends Model
 {
     public $timestamps = false;
+
+    /**
+     * @var list<LoanActivityType>
+     */
+    public const EDITABLE_TYPES = [LoanActivityType::Note, LoanActivityType::Call, LoanActivityType::Visit, LoanActivityType::PromiseToPay];
 
     protected $fillable = [
         'loan_id',
@@ -49,8 +56,16 @@ class LoanActivity extends Model
 
     protected static function booted(): void
     {
-        static::updating(fn () => throw new LogicException('Loan activities cannot be changed.'));
-        static::deleting(fn () => throw new LogicException('Loan activities cannot be deleted.'));
+        static::updating(function (self $activity) {
+            if (! in_array($activity->getOriginal('type'), self::EDITABLE_TYPES, true)) {
+                throw new LogicException('Loan activities cannot be changed.');
+            }
+        });
+        static::deleting(function (self $activity) {
+            if (! in_array($activity->type, self::EDITABLE_TYPES, true)) {
+                throw new LogicException('Loan activities cannot be deleted.');
+            }
+        });
     }
 
     public function loan(): BelongsTo

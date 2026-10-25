@@ -18,6 +18,7 @@ use App\Models\Concerns\HasPublicId;
 use App\Models\Concerns\HasReferenceNumber;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -31,7 +32,7 @@ class Loan extends Model
      */
     public const AUDIT_IGNORED = ['outstanding_principal', 'outstanding_profit', 'outstanding_charges', 'outstanding_penalty', 'arrears_amount', 'days_past_due', 'risk_stage'];
 
-    use BelongsToBranch, HasPublicId, HasReferenceNumber;
+    use BelongsToBranch, HasPublicId, HasReferenceNumber, SoftDeletes;
 
     public const REFERENCE_PREFIX = 'APP';
 
@@ -90,6 +91,7 @@ class Loan extends Model
         'purpose',
         'requested_amount',
         'tenure',
+        'application_date',
         'created_by',
         'updated_by',
         // Custom fields defined as data (lookups custom_field.loan), validated by the request.
@@ -128,6 +130,8 @@ class Loan extends Model
             'approved_at' => 'datetime',
             'accepted_at' => 'datetime',
             'disbursed_at' => 'datetime',
+            'application_date' => 'date',
+            'multiple_open_at' => 'datetime',
             'first_due_date' => 'date',
             'maturity_date' => 'date',
             'income_suspended_at' => 'date',
@@ -229,6 +233,24 @@ class Loan extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    /**
+     * A loan saved without an application date was applied for today.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (Loan $loan) {
+            $loan->application_date ??= BusinessDate::today();
+        });
+    }
+
+    /**
+     * The person who allowed this customer a second open loan (special case).
+     */
+    public function multipleOpenBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'multiple_open_by');
     }
 
     public function customer(): BelongsTo
