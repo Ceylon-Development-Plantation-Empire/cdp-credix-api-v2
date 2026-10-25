@@ -170,13 +170,6 @@ class GroupController extends Controller implements HasMiddleware
 
             $groupName = $group->name;
 
-            if (! auth('api')->user()->hasRole('Super Admin')) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Only Super Admin can delete groups',
-                ], 403);
-            }
-
             $group->delete();
 
             $this->logActivity('DELETE', 'Group', "Deleted group: {$groupName}");

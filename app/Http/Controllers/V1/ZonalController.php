@@ -174,13 +174,6 @@ class ZonalController extends Controller implements HasMiddleware
 
             $zonalName = $zonal->name;
 
-            if (! auth('api')->user()->hasRole('Super Admin')) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Only Super Admin can delete zonals',
-                ], 403);
-            }
-
             $zonal->delete();
 
             $this->logActivity('DELETE', 'Zonal', "Deleted zonal: {$zonalName}");

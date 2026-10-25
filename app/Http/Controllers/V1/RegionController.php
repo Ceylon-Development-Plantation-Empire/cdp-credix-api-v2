@@ -174,13 +174,6 @@ class RegionController extends Controller implements HasMiddleware
 
             $regionName = $region->name;
 
-            if (! auth('api')->user()->hasRole('Super Admin')) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Only Super Admin can delete regions',
-                ], 403);
-            }
-
             $region->delete();
 
             $this->logActivity('DELETE', 'Region', "Deleted region: {$regionName}");

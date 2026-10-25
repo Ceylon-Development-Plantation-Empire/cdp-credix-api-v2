@@ -165,14 +165,6 @@ class BranchController extends Controller implements HasMiddleware
                 ], 404);
             }
 
-            // Check if user is Super Admin
-            if (! auth('api')->user()->hasRole('Super Admin')) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Only Super Admin can delete branches',
-                ], 403);
-            }
-
             $branchName = $branch->name;
             $branch->delete();
 

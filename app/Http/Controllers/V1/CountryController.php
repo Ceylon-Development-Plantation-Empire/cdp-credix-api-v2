@@ -164,13 +164,6 @@ class CountryController extends Controller implements HasMiddleware
                 ], 404);
             }
 
-            if (! auth('api')->user()->hasRole('Super Admin')) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Only Super Admin can delete countries',
-                ], 403);
-            }
-
             $countryName = $country->name;
             $country->delete();
 

@@ -180,13 +180,6 @@ class DesignationController extends Controller implements HasMiddleware
                 ], 404);
             }
 
-            if (! auth('api')->user()->hasRole('Super Admin')) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Only Super Admin can delete designations',
-                ], 403);
-            }
-
             $designationName = $designation->name;
             $designation->delete();
 
