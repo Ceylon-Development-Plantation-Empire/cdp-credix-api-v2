@@ -26,7 +26,7 @@ beforeEach(function () {
 
     $this->cashier = Fixtures::staffInBranch($this->branchId, 'Payment Create', 'Payment Reversal Request', 'Loan Settle', 'Loan Restructure Request', 'Loan Index');
     $this->supervisor = Fixtures::staffInBranch($this->branchId, 'Approval Request Index', 'Payment Reversal Approve', 'Loan Restructure Approve', 'GL Journal Approve');
-    $this->accountant = staffWith('Branch Data All', 'GL Account Index', 'GL Account Manage', 'GL Journal Index', 'GL Journal Request', 'GL Report View', 'GL Period Close');
+    $this->accountant = staffWith('Branch Data All', 'GL Account Index', 'GL Account Create', 'GL Account Update', 'GL Account Delete', 'GL Journal Index', 'GL Journal Request', 'GL Report View', 'GL Period Close');
 });
 
 /**
@@ -161,7 +161,7 @@ describe('manual journals', function () {
         $this->bank = GlAccount::where('slug', 'bank')->value('id');
     });
 
-    it('posts only after a second person approves it', function () {
+    it('posts only after the approval permission holder approves it', function () {
         $payload = ['value_date' => today()->toDateString(), 'narration' => 'Cash float from bank', 'lines' => [
             ['gl_account_id' => $this->cash, 'debit' => '25000'],
             ['gl_account_id' => $this->bank, 'credit' => '25000'],
@@ -172,10 +172,8 @@ describe('manual journals', function () {
 
         expect(glBalance('cash-in-hand'))->toBe('0.00');
 
-        // The person who entered it cannot approve it, even with the permission.
-        $this->accountant->givePermissionTo(['GL Journal Approve', 'Approval Request Index']);
-        $this->actingAs($this->accountant->fresh(), 'api')->postJson("/api/v1/approval-requests/{$approval}/approve")
-            ->assertStatus(403)->assertJsonPath('code', 'SELF_APPROVAL_NOT_ALLOWED');
+        // Entering a journal does not let someone post it: that needs the approval permission.
+        $this->actingAs($this->accountant, 'api')->postJson("/api/v1/approval-requests/{$approval}/approve")->assertForbidden();
 
         $headOffice = staffWith('Branch Data All', 'Approval Request Index', 'GL Journal Approve');
         $this->actingAs($headOffice, 'api')->postJson("/api/v1/approval-requests/{$approval}/approve", ['remarks' => 'OK'])->assertOk();

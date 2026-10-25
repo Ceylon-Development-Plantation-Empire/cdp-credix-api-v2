@@ -61,4 +61,9 @@ it('keeps every level in org_units while the API keeps its own names', function 
         'created_at' => now(), 'updated_at' => now(),
     ]);
     expect(fn () => DB::table('org_units')->where('id', $province['id'])->delete())->toThrow(QueryException::class);
+
+    // The dropdown names each branch's province, region and zone (they sit in org_units, keyed by parent_id).
+    $this->actingAs(staffWith('Branch Index'), 'api')->getJson("/api/v1/branches/list?province_id={$province['id']}")->assertOk()
+        ->assertJsonPath('data.0.code', 'COL')->assertJsonPath('data.0.province.name', 'Western')
+        ->assertJsonPath('data.0.region.name', 'Colombo region')->assertJsonPath('data.0.zonal.name', 'Colombo zone');
 });

@@ -116,7 +116,7 @@ describe('repayments', function () {
 });
 
 describe('reversals', function () {
-    it('reverses a payment only with a second person, once, without touching the original', function () {
+    it('reverses a payment only once approved, once, without touching the original', function () {
         $loan = LoanFixtures::disbursedLoan($this->branchId, 'sme-loan', '120000', 12);
         $txn = pay($this, $loan, '5000')->json('data.public_id');
         $paidBefore = (string) firstInstallment($loan)->total_paid;
@@ -124,10 +124,8 @@ describe('reversals', function () {
         $approval = $this->actingAs($this->cashier, 'api')->postJson("/api/v1/payments/{$txn}/reverse", ['remarks' => 'Posted to the wrong loan'])
             ->assertStatus(202)->assertJsonPath('data.action', 'payment_reversal')->json('data.public_id');
 
-        // The person who asked cannot decide.
-        $this->cashier->givePermissionTo(Permission::firstOrCreate(['name' => 'Payment Reversal Approve', 'guard_name' => 'api'], ['group_name' => 'Tests']));
-        $this->actingAs($this->cashier->fresh(), 'api')->postJson("/api/v1/approval-requests/{$approval}/approve")
-            ->assertStatus(403)->assertJsonPath('code', 'SELF_APPROVAL_NOT_ALLOWED');
+        // Asking for a reversal does not decide it: that needs the approval permission.
+        $this->actingAs($this->cashier, 'api')->postJson("/api/v1/approval-requests/{$approval}/approve")->assertForbidden();
 
         approveRequest($this, $approval)->assertOk()->assertJsonPath('data.status', 'approved');
 

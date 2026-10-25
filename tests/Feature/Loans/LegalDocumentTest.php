@@ -19,7 +19,7 @@ beforeEach(function () {
     $this->branchId = Fixtures::branch();
     $this->seed([ProductCatalogSeeder::class, DocumentRequirementSeeder::class]);
     LoanFixtures::product('sme-loan', ['min_guarantors' => 0, 'max_guarantors' => 2]);
-    $this->legal = Fixtures::staffInBranch($this->branchId, 'Legal Document Index', 'Legal Document Manage', 'Legal Template Manage');
+    $this->legal = Fixtures::staffInBranch($this->branchId, 'Legal Document Index', 'Legal Document Create', 'Legal Document Update', 'Legal Document Delete', 'Legal Template Index', 'Legal Template Create', 'Legal Template Update', 'Legal Template Delete');
     $this->loan = LoanFixtures::approvedLoan($this->branchId, 'sme-loan', '150000', 12);
     $this->wording = fn (string $language = 'en', ?string $type = null) => $this->actingAs($this->legal, 'api')->postJson('/api/v1/legal-document-templates', [
         'document_type' => $type ?? 'direct_loan_agreement', 'language' => $language, 'content' => '<div class="legal-print-page">Agreement of {{customer_name}} ...</div>',
@@ -119,7 +119,7 @@ describe('documents', function () {
     it('is closed to other branches and to users without the permission', function () {
         $id = $this->actingAs($this->legal, 'api')->postJson('/api/v1/legal-documents', legalBody($this->loan->public_id))->assertCreated()->json('data.public_id');
 
-        $kandy = Fixtures::staffInBranch(Fixtures::branch('Kandy'), 'Legal Document Index', 'Legal Document Manage');
+        $kandy = Fixtures::staffInBranch(Fixtures::branch('Kandy'), 'Legal Document Index', 'Legal Document Create', 'Legal Document Update', 'Legal Document Delete');
         $this->actingAs($kandy, 'api')->getJson("/api/v1/legal-documents/{$id}")->assertNotFound();
         $this->actingAs($kandy, 'api')->getJson('/api/v1/legal-documents')->assertOk()->assertJsonPath('data.meta.total', 0);
         $this->actingAs($kandy, 'api')->postJson('/api/v1/legal-documents', legalBody($this->loan->public_id))->assertNotFound();

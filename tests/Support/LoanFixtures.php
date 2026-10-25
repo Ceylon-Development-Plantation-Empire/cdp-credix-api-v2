@@ -14,12 +14,14 @@ use App\Models\Loan;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Role;
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\Loans\DisbursementService;
 use App\Services\Loans\LoanPartyService;
 use App\Services\Loans\LoanPricingService;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 /**
@@ -140,6 +142,17 @@ final class LoanFixtures
     }
 
     /**
+     * Switch the "customer confirmed the review link" gate off, for tests of other steps (it has its own tests).
+     */
+    public static function skipReviewGate(): void
+    {
+        Setting::query()->updateOrCreate(['key' => 'loan_review.required_before_disbursement'], [
+            'group' => 'loans', 'type' => 'boolean', 'value' => '0', 'rules' => ['value' => 'required|boolean'], 'label' => 'Customer review needed to disburse',
+        ]);
+        Cache::forget(Setting::cacheKey('loan_review.required_before_disbursement'));
+    }
+
+    /**
      * An individual loan paid out on $disbursedOn by the real DisbursementService, so the schedule,
      * ledger and balances are exactly what production creates. The steps before (review, approval,
      * OTP acceptance) are set directly; they have their own tests.
@@ -155,7 +168,8 @@ final class LoanFixtures
             'consent_hash' => hash('sha256', json_encode(app(LoanPartyService::class)->offerTerms($loan->refresh()))),
         ])->save();
 
-        self::verifiedDocument($loan, 'loan-agreement');
+        // The customer review has its own tests; a fixture that does not exercise it switches the gate off.
+        self::skipReviewGate();
 
         if ($beforeDisburse) {
             $beforeDisburse($loan);
@@ -246,16 +260,10 @@ final class LoanFixtures
     }
 
     /**
-     * A staff member who can approve loans up to $limit.
+     * A staff member who can approve loans (the Loan Approve permission is all it takes).
      */
-    public static function approver(int $branchId, string $limit, string ...$permissions): User
+    public static function approver(int $branchId, string ...$permissions): User
     {
-        $user = Fixtures::staffInBranch($branchId, 'Loan Approve', ...$permissions);
-
-        $role = Role::create(['name' => 'Approver '.Str::random(6), 'guard_name' => 'api']);
-        $role->forceFill(['max_approval_amount' => $limit])->save();
-        $user->assignRole($role);
-
-        return $user->fresh();
+        return Fixtures::staffInBranch($branchId, 'Loan Approve', ...$permissions);
     }
 }

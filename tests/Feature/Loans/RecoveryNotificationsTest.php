@@ -67,7 +67,7 @@ describe('notifications', function () {
     });
 
     it('refuses template placeholders the message does not offer', function () {
-        $admin = Fixtures::staffInBranch($this->branchId, 'Template Manage');
+        $admin = Fixtures::staffInBranch($this->branchId, 'Template Create', 'Template Update', 'Template Delete');
 
         $this->actingAs($admin, 'api')->postJson('/api/v1/templates', ['slug' => 'payment.received', 'channel' => 'sms', 'language' => 'ta', 'body' => 'Paid {{amount}} {{password}}'])
             ->assertStatus(422)->assertJsonPath('code', 'TEMPLATE_PLACEHOLDER_UNKNOWN');

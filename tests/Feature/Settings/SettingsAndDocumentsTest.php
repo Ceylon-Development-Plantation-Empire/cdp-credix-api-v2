@@ -59,7 +59,9 @@ describe('document rules', function () {
             ->and($identity->pluck('rule')->unique()->map->value->all())->toBe(['any'])
             ->and($employed)->toHaveCount(3)
             ->and(DocumentRequirement::where('party_role', 'guarantor')->where('requirement_group', 'residency-proof')->exists())->toBeFalse()
-            ->and(DocumentRequirement::where('party_role', 'borrower')->where('employment_status', 'self_employed')->value('min_count'))->toBe(6);
+            ->and($employed->every(fn ($row) => ! $row->is_mandatory))->toBeTrue()
+            ->and(DocumentRequirement::where('party_role', 'guarantor')->where('requirement_group', 'identity-proof')->where('is_mandatory', true)->count())->toBe(3)
+            ->and(DocumentRequirement::where('party_role', 'borrower')->where('employment_status', 'self_employed')->value('min_count'))->toBe(1);
     });
 
     it('refuses mixing any and all inside one requirement group', function () {

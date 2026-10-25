@@ -16,7 +16,7 @@ beforeEach(function () {
     $this->seed(DocumentRequirementSeeder::class);
     Storage::fake('private');
 
-    $this->officer = Fixtures::staffInBranch($this->branchId, 'Customer Create', 'Customer Index', 'Document Upload', 'Document Index', 'Document Delete', 'Customer Bank Account Manage', 'Customer Financial Manage');
+    $this->officer = Fixtures::staffInBranch($this->branchId, 'Customer Create', 'Customer Index', 'Document Upload', 'Document Index', 'Document Delete', 'Customer Bank Account Index', 'Customer Bank Account Create', 'Customer Bank Account Update', 'Customer Bank Account Delete', 'Customer Financial Index', 'Customer Financial Create', 'Customer Financial Update', 'Customer Financial Delete');
     $this->checker = Fixtures::staffInBranch($this->branchId, 'Document Verify', 'Document Index');
 
     $this->publicId = $this->actingAs($this->officer, 'api')
@@ -61,16 +61,11 @@ describe('documents', function () {
         expect(Document::count())->toBe(0);
     });
 
-    it('needs a second person to verify a document', function () {
+    it('needs the verify permission to verify a document', function () {
         $documentId = upload($this, $this->publicId, 'nic-copy')->json('data.public_id');
 
-        $uploaderWithVerify = $this->officer;
-        $uploaderWithVerify->givePermissionTo(Permission::firstOrCreate(['name' => 'Document Verify', 'guard_name' => 'api'], ['group_name' => 'Tests']));
-
-        $this->actingAs($uploaderWithVerify->fresh(), 'api')
-            ->postJson("/api/v1/documents/{$documentId}/verify")
-            ->assertStatus(403)
-            ->assertJsonPath('code', 'SELF_VERIFICATION_NOT_ALLOWED');
+        // The officer who uploaded it has no verify permission.
+        $this->actingAs($this->officer, 'api')->postJson("/api/v1/documents/{$documentId}/verify")->assertForbidden();
 
         $this->actingAs($this->checker, 'api')
             ->postJson("/api/v1/documents/{$documentId}/verify")
@@ -93,12 +88,17 @@ describe('documents', function () {
             ->assertJsonPath('data.complete', false)
             ->json('data.groups'))->keyBy('requirement_group');
 
-        // NIC alone satisfies identity (any); GN without DS does not satisfy residency (all);
-        // the employed customer still needs the three employment documents incl. 3 salary slips.
+        // NIC alone satisfies identity (any); the residency letters are optional, so they never hold the customer back;
+        // the employed customer still needs the employment letter and the salary slips (one PDF), but not the
+        // optional salary confirmation letter that sits in the same group.
+        $employment = collect($groups['employment-proof']['documents'])->keyBy('document_type.slug');
+
         expect($groups['identity-proof']['satisfied'])->toBeTrue()
-            ->and($groups['residency-proof']['satisfied'])->toBeFalse()
+            ->and($groups['residency-proof']['is_mandatory'])->toBeFalse()
             ->and($groups['employment-proof']['satisfied'])->toBeFalse()
-            ->and(collect($groups['employment-proof']['documents'])->firstWhere('document_type.slug', 'salary-slip')['min_count'])->toBe(3)
+            ->and($employment['salary-slip']['min_count'])->toBe(1)
+            ->and($employment['salary-slip']['is_mandatory'])->toBeTrue()
+            ->and($employment['salary-confirmation-letter']['is_mandatory'])->toBeFalse()
             ->and($groups['other-documents']['is_mandatory'])->toBeFalse();
     });
 
@@ -155,7 +155,7 @@ describe('financials', function () {
 
 describe('borrower groups', function () {
     beforeEach(function () {
-        $this->groupAdmin = Fixtures::staffInBranch($this->branchId, 'Borrower Group Create', 'Borrower Group Member Manage', 'Borrower Group Index');
+        $this->groupAdmin = Fixtures::staffInBranch($this->branchId, 'Borrower Group Create', 'Borrower Group Member Create', 'Borrower Group Member Update', 'Borrower Group Member Delete', 'Borrower Group Index');
         $this->groupA = $this->actingAs($this->groupAdmin, 'api')
             ->postJson('/api/v1/borrower-groups', ['name' => 'Sunrise Women', 'branch_id' => $this->branchId, 'formed_on' => '2026-01-10'])
             ->assertCreated()->json('data.public_id');
@@ -206,7 +206,7 @@ describe('borrower groups', function () {
             ->assertNotFound();
 
         // …and head office, who can see both, is still refused: groups only take members of their branch.
-        $headOffice = Fixtures::staffInBranch($kandy, 'Borrower Group Member Manage', 'Branch Data All');
+        $headOffice = Fixtures::staffInBranch($kandy, 'Borrower Group Member Create', 'Borrower Group Member Update', 'Borrower Group Member Delete', 'Branch Data All');
 
         $this->actingAs($headOffice, 'api')
             ->postJson("/api/v1/borrower-groups/{$this->groupA}/members", ['customer_public_id' => $kandyCustomer->public_id])

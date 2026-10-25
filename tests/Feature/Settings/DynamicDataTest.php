@@ -14,7 +14,7 @@ use Tests\Support\Fixtures;
 
 beforeEach(function () {
     $this->branchId = Fixtures::branch();
-    $this->admin = staffWith('Lookup Index', 'Lookup Manage', 'Charge Type Index', 'Charge Type Manage', 'Product Create', 'Product Index', 'Branch Data All');
+    $this->admin = staffWith('Lookup Index', 'Lookup Create', 'Lookup Update', 'Lookup Delete', 'Charge Type Index', 'Charge Type Create', 'Charge Type Update', 'Charge Type Delete', 'Product Create', 'Product Index', 'Branch Data All');
 });
 
 describe('code lists', function () {

@@ -157,19 +157,13 @@ describe('shariah approval', function () {
             ->assertJsonPath('code', 'SHARIAH_APPROVAL_REQUIRED');
     });
 
-    it('goes live only after a different person with the permission approves it with a reference', function () {
+    it('goes live only after a person with the permission approves it with a reference', function () {
         $approvalId = $this->actingAs($this->maker, 'api')
             ->postJson('/api/v1/products/murabaha-sme/shariah-review', ['reason' => 'New Murabaha product for SME stock'])
             ->assertCreated()
             ->json('data.public_id');
 
         expect(Product::findBySlug('murabaha-sme')->status)->toBe(ProductStatus::PendingShariah);
-
-        // The maker cannot approve their own request.
-        $this->actingAs($this->maker, 'api')
-            ->postJson("/api/v1/approval-requests/{$approvalId}/approve", ['reference' => 'SB/2026/14'])
-            ->assertStatus(403)
-            ->assertJsonPath('code', 'SELF_APPROVAL_NOT_ALLOWED');
 
         // A viewer without the Shariah permission cannot approve.
         $this->actingAs(staffWith('Approval Request Index'), 'api')

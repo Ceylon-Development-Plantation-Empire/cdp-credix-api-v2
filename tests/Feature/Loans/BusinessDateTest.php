@@ -22,7 +22,7 @@ it('uses the Sri Lankan calendar date while UTC is still on the previous day', f
     $this->travelTo(CarbonImmutable::parse('2026-10-20 19:30:00', 'UTC'));
 
     expect(BusinessDate::today()->toDateString())->toBe('2026-10-21')
-        ->and(now()->toDateString())->toBe('2026-10-20');
+        ->and(now()->toDateString())->toBe('2026-10-21');
 
     $branchId = Fixtures::branch();
     $this->seed([ProductCatalogSeeder::class, DocumentRequirementSeeder::class]);
@@ -42,10 +42,10 @@ it('uses the Sri Lankan calendar date while UTC is still on the previous day', f
 
     expect(LoanTransaction::where('public_id', $response->json('data.public_id'))->first()->value_date->toDateString())->toBe('2026-10-21');
 
-    // Stored moments are UTC; the API shows them in Colombo time (+05:30), as documented in guide v2.0.
+    // One time zone everywhere: stored moments are Colombo time and the API shows them with +05:30.
     $disbursedAt = $this->actingAs(staffWith('Loan Index', 'Branch Data All'), 'api')->getJson("/api/v1/loans/{$loan->public_id}")
         ->assertOk()->json('data.dates.disbursed_at');
 
     expect($disbursedAt)->toEndWith('+05:30')
-        ->and(CarbonImmutable::parse($disbursedAt)->utc()->toDateTimeString())->toBe(CarbonImmutable::parse(DB::table('loans')->where('id', $loan->id)->value('disbursed_at'), 'UTC')->toDateTimeString());
+        ->and(CarbonImmutable::parse($disbursedAt)->toDateTimeString())->toBe(CarbonImmutable::parse(DB::table('loans')->where('id', $loan->id)->value('disbursed_at'), 'Asia/Colombo')->toDateTimeString());
 });

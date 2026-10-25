@@ -16,7 +16,8 @@ beforeEach(function () {
     $this->branchId = Fixtures::branch();
     $this->seed([ProductCatalogSeeder::class, DocumentRequirementSeeder::class]);
     LoanFixtures::product('sme-loan', ['min_guarantors' => 0, 'max_guarantors' => 2]);
-    $this->officer = Fixtures::staffInBranch($this->branchId, 'Loan Index', 'Loan Create', 'Loan Guarantor Manage');
+    $this->officer = Fixtures::staffInBranch($this->branchId, 'Loan Index', 'Loan Create', 'Loan Guarantor Index', 'Loan Guarantor Create', 'Loan Guarantor Update', 'Loan Guarantor Delete', 'Loan Multiple Open Allow');
+    $this->special = ['allow_multiple_open' => true, 'multiple_open_reason' => 'The list filter is tested with several loans of one person'];
 });
 
 function draftFor($test, $customer, array $extra = []): string
@@ -32,8 +33,9 @@ it('lists the loans a customer borrows on, including as co-borrower, and nobody 
     $nimal = LoanFixtures::customer($this->branchId, ['id_number' => '199012345678', 'date_of_birth' => '1990-01-01', 'gender' => 'male']);
 
     $own = draftFor($this, $kamal);
-    $joint = draftFor($this, $nimal, ['borrower_type' => 'joint', 'co_borrower_public_ids' => [$kamal->public_id]]);
-    draftFor($this, $nimal);
+    // One person on several applications is the special case (permission Loan Multiple Open Allow).
+    $joint = draftFor($this, $nimal, ['borrower_type' => 'joint', 'co_borrower_public_ids' => [$kamal->public_id]] + $this->special);
+    draftFor($this, $nimal, $this->special);
 
     $ids = $this->actingAs($this->officer, 'api')->getJson("/api/v1/loans?customer_public_id={$kamal->public_id}&per_page=1&page=1")
         ->assertOk()->assertJsonPath('data.meta.total', 2)->json('data.items.*.public_id');

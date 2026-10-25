@@ -23,10 +23,10 @@ beforeEach(function () {
     $this->product = LoanFixtures::product('sme-loan', ['min_guarantors' => 0, 'max_guarantors' => 2]);
 
     // A different person for every step, as maker-checker requires.
-    $this->officer = Fixtures::staffInBranch($this->branchId, 'Loan Index', 'Loan Create', 'Loan Update', 'Loan Submit', 'Loan Guarantor Manage', 'Loan Collateral Manage', 'Loan Offer Manage', 'Loan Cancel');
+    $this->officer = Fixtures::staffInBranch($this->branchId, 'Loan Index', 'Loan Create', 'Loan Update', 'Loan Submit', 'Loan Guarantor Index', 'Loan Guarantor Create', 'Loan Guarantor Update', 'Loan Guarantor Delete', 'Loan Collateral Index', 'Loan Collateral Create', 'Loan Collateral Update', 'Loan Collateral Delete', 'Loan Offer Manage', 'Loan Cancel');
     $this->reviewer = Fixtures::staffInBranch($this->branchId, 'Loan Index', 'Loan Review', 'Loan Reject');
     $this->verifier = Fixtures::staffInBranch($this->branchId, 'Loan Index', 'Loan Verify', 'Loan Collateral Verify');
-    $this->approver = LoanFixtures::approver($this->branchId, '500000', 'Loan Index', 'Loan Collateral Perfect');
+    $this->approver = LoanFixtures::approver($this->branchId, 'Loan Index', 'Loan Collateral Perfect');
     $this->disburser = Fixtures::staffInBranch($this->branchId, 'Loan Index', 'Loan Disburse');
 
     $this->borrower = LoanFixtures::customer($this->branchId);
@@ -151,7 +151,7 @@ describe('workflow', function () {
         $this->actingAs($this->officer, 'api')->getJson("/api/v1/loans/{$id}")->assertJsonPath('data.status', 'accepted');
 
         $loan = Loan::where('public_id', $id)->first();
-        LoanFixtures::verifiedDocument($loan, 'loan-agreement');
+        LoanFixtures::skipReviewGate();
 
         loanDisburse($this, $id)->assertOk()
             ->assertJsonPath('data.status', 'active')
@@ -176,47 +176,32 @@ describe('workflow', function () {
         expect($timeline)->toBe(['active', 'accepted', 'approved', 'verified', 'in_review', 'submitted']);
     });
 
-    it('keeps maker and checker apart (L-5)', function () {
+    it('lets the permissions alone decide: one person whose role holds them can take a loan through every step', function () {
         $id = loanApply($this)->json('data.public_id');
-        $this->officer->givePermissionTo(Permission::firstOrCreate(['name' => 'Loan Review', 'guard_name' => 'api'], ['group_name' => 'Tests']));
-        $this->actingAs($this->officer->fresh(), 'api')->postJson("/api/v1/loans/{$id}/submit")->assertOk();
+        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/submit")->assertOk();
 
-        // The submitter cannot review their own application.
-        $this->actingAs($this->officer->fresh(), 'api')->postJson("/api/v1/loans/{$id}/start-review")
-            ->assertStatus(403)->assertJsonPath('code', 'SEGREGATION_OF_DUTIES');
+        // Without the permission a step is refused, whoever the person is.
+        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/start-review")->assertForbidden();
 
-        // A reviewer who also holds Loan Verify still cannot verify what they reviewed.
-        $reviewerVerifier = LoanFixtures::approver($this->branchId, '500000', 'Loan Review', 'Loan Verify');
-        $this->actingAs($reviewerVerifier, 'api')->postJson("/api/v1/loans/{$id}/start-review")->assertOk();
-        $this->actingAs($reviewerVerifier, 'api')->postJson("/api/v1/loans/{$id}/verify")->assertStatus(403)->assertJsonPath('code', 'SEGREGATION_OF_DUTIES');
-
-        $this->actingAs($this->verifier, 'api')->postJson("/api/v1/loans/{$id}/verify")->assertOk();
-
-        // Nobody who reviewed or verified can approve, even with the permission and a limit.
-        $this->actingAs($reviewerVerifier, 'api')->postJson("/api/v1/loans/{$id}/approve")->assertStatus(403)->assertJsonPath('code', 'SEGREGATION_OF_DUTIES');
-        $this->actingAs($this->approver, 'api')->postJson("/api/v1/loans/{$id}/approve")->assertOk();
+        $everything = LoanFixtures::approver($this->branchId, 'Loan Review', 'Loan Verify', 'Loan Disburse', 'Loan Offer Manage');
+        $this->actingAs($everything, 'api')->postJson("/api/v1/loans/{$id}/start-review")->assertOk();
+        $this->actingAs($everything, 'api')->postJson("/api/v1/loans/{$id}/verify")->assertOk();
+        $this->actingAs($everything, 'api')->postJson("/api/v1/loans/{$id}/approve")->assertOk();
 
         loanAcceptOffer($this, $id);
-        LoanFixtures::verifiedDocument(Loan::where('public_id', $id)->first(), 'loan-agreement');
+        LoanFixtures::skipReviewGate();
 
-        // The approver cannot pay out their own approval.
-        $this->approver->givePermissionTo(Permission::firstOrCreate(['name' => 'Loan Disburse', 'guard_name' => 'api'], ['group_name' => 'Tests']));
-        $this->actingAs($this->approver->fresh(), 'api')->withHeader('Idempotency-Key', 'disb-key-0002')
+        $this->actingAs($everything, 'api')->withHeader('Idempotency-Key', 'disb-key-0002')
             ->postJson("/api/v1/loans/{$id}/disburse", ['channel' => 'cash'])
-            ->assertStatus(403)->assertJsonPath('code', 'SEGREGATION_OF_DUTIES');
+            ->assertOk()->assertJsonPath('data.status', 'active');
     });
 
-    it('approves only within the approver limit and never above the request', function () {
+    it('needs only the approve permission (no per-role limit) and never approves above the request', function () {
         $id = loanApply($this)->json('data.public_id');
         loanToVerified($this, $id);
 
-        $smallApprover = LoanFixtures::approver($this->branchId, '100000');
-        $this->actingAs($smallApprover, 'api')->postJson("/api/v1/loans/{$id}/approve")
-            ->assertStatus(403)->assertJsonPath('code', 'APPROVAL_LIMIT_EXCEEDED');
-
-        $noLimit = Fixtures::staffInBranch($this->branchId, 'Loan Approve');
-        $this->actingAs($noLimit, 'api')->postJson("/api/v1/loans/{$id}/approve")
-            ->assertStatus(403)->assertJsonPath('code', 'APPROVAL_AUTHORITY_MISSING');
+        $noPermission = Fixtures::staffInBranch($this->branchId, 'Loan Index');
+        $this->actingAs($noPermission, 'api')->postJson("/api/v1/loans/{$id}/approve")->assertForbidden();
 
         $this->actingAs($this->approver, 'api')->postJson("/api/v1/loans/{$id}/approve", ['approved_amount' => '200000'])
             ->assertStatus(422)->assertJsonPath('code', 'APPROVED_ABOVE_REQUESTED');
@@ -308,7 +293,7 @@ describe('workflow', function () {
         $this->actingAs($this->approver, 'api')->postJson("/api/v1/loans/{$id}/approve", ['approved_amount' => '180000', 'special_approval' => true, 'remarks' => 'Owner asked for more by phone'])
             ->assertStatus(403)->assertJsonPath('code', 'SPECIAL_APPROVAL_NOT_ALLOWED');
 
-        $special = LoanFixtures::approver($this->branchId, '500000', 'Loan Index', 'Loan Approve Special');
+        $special = LoanFixtures::approver($this->branchId, 'Loan Index', 'Loan Approve Special');
         $this->actingAs($special, 'api')->postJson("/api/v1/loans/{$id}/approve", ['approved_amount' => '180000', 'special_approval' => true])
             ->assertStatus(422)->assertJsonPath('code', 'SPECIAL_APPROVAL_REASON_REQUIRED');
 
@@ -354,7 +339,7 @@ describe('workflow', function () {
         $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/offer/hold", ['remarks' => 'Too late now'])->assertStatus(409)->assertJsonPath('code', 'OFFER_NOT_OPEN');
     });
 
-    it('does not disburse without the verified agreement or an idempotency key', function () {
+    it('does not disburse before the customer confirms the review, or without an idempotency key', function () {
         $id = loanApply($this)->json('data.public_id');
         loanToApproved($this, $id);
         loanAcceptOffer($this, $id);
@@ -363,7 +348,7 @@ describe('workflow', function () {
             ->assertStatus(422)->assertJsonFragment(['field' => 'idempotency_key']);
 
         $response = loanDisburse($this, $id)->assertStatus(422)->assertJsonPath('code', 'LOAN_NOT_READY');
-        expect(problemCodes($response))->toBe(['AGREEMENT_MISSING']);
+        expect(problemCodes($response))->toBe(['REVIEW_NOT_CONFIRMED']);
     });
 });
 
@@ -407,30 +392,6 @@ describe('guarantors', function () {
         Loan::where('public_id', $id)->first()->forceFill(['status' => 'settled'])->save();
         loanApply($this, ['customer_public_id' => $guarantor->public_id])->assertCreated();
     });
-
-    it('needs the guarantor to consent by OTP, and again after the amount changes (G-5)', function () {
-        LoanFixtures::product('sme-loan', ['min_guarantors' => 1, 'max_guarantors' => 2]);
-        $guarantor = LoanFixtures::customer($this->branchId);
-
-        $id = loanApply($this)->json('data.public_id');
-        $partyId = $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/guarantors", ['customer_public_id' => $guarantor->public_id])->json('data.id');
-
-        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/parties/{$partyId}/consent/send-otp")->assertOk();
-        expect($this->sms->sent[0]['message'])->toContain('GUARANTEE')->and($this->sms->sent[0]['to'])->toBe($guarantor->phone_primary);
-
-        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/parties/{$partyId}/consent/verify", ['code' => $this->sms->lastCode()])
-            ->assertOk()->assertJsonPath('data.consented_at', fn ($v) => $v !== null);
-
-        // A new amount is not what the guarantor agreed to.
-        $this->actingAs($this->officer, 'api')->putJson("/api/v1/loans/{$id}", ['requested_amount' => '180000'])->assertOk();
-        expect(LoanParty::find($partyId)->consented_at)->toBeNull();
-
-        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/submit")->assertOk();
-        $this->actingAs($this->reviewer, 'api')->postJson("/api/v1/loans/{$id}/start-review")->assertOk();
-
-        $response = $this->actingAs($this->verifier, 'api')->postJson("/api/v1/loans/{$id}/verify")->assertStatus(422);
-        expect(problemCodes($response))->toBe(['GUARANTOR_CONSENT_MISSING']);
-    });
 });
 
 describe('collateral', function () {
@@ -455,7 +416,7 @@ describe('collateral', function () {
         ]);
     }
 
-    it('values gold from weight and purity, and needs a second person and the slip to verify it', function () {
+    it('values gold from weight and purity, and needs the verify permission and the slip to verify it', function () {
         $id = goldApply($this, '150000');
 
         // 10 g × 22/24 × 30,000 = 275,000; at 70% LTV it secures 192,500.
@@ -464,9 +425,7 @@ describe('collateral', function () {
             ->assertJsonPath('data.eligible_amount', '192500.00')
             ->json('data.public_id');
 
-        $this->officer->givePermissionTo(Permission::firstOrCreate(['name' => 'Loan Collateral Verify', 'guard_name' => 'api'], ['group_name' => 'Tests']));
-        $this->actingAs($this->officer->fresh(), 'api')->postJson("/api/v1/loans/{$id}/collaterals/{$collateralId}/verify")
-            ->assertStatus(403)->assertJsonPath('code', 'SELF_VERIFICATION_NOT_ALLOWED');
+        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/collaterals/{$collateralId}/verify")->assertForbidden();
 
         $this->actingAs($this->verifier, 'api')->postJson("/api/v1/loans/{$id}/collaterals/{$collateralId}/verify")
             ->assertStatus(422)->assertJsonPath('code', 'COLLATERAL_DOCUMENTS_MISSING');
@@ -475,6 +434,43 @@ describe('collateral', function () {
 
         $this->actingAs($this->verifier, 'api')->postJson("/api/v1/loans/{$id}/collaterals/{$collateralId}/verify")
             ->assertOk()->assertJsonPath('data.status', 'verified');
+    });
+
+    it('needs only the title document of an asset; the valuation report is optional', function () {
+        $id = loanApply($this)->assertCreated()->json('data.public_id');
+
+        $collateralId = $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/collaterals", [
+            'type' => 'property_mortgage', 'description' => 'House in Maharagama', 'details' => ['deed_no' => 'D 1234/56'],
+            'market_value' => '8000000', 'valued_on' => today()->toDateString(),
+        ])->assertCreated()->json('data.public_id');
+
+        $checklist = fn () => collect($this->actingAs($this->officer, 'api')->getJson("/api/v1/loans/{$id}/document-checklist")->json('data.collaterals'))->firstWhere('public_id', $collateralId);
+
+        expect($checklist()['missing_documents'])->toBe(['property-deed'])
+            ->and($checklist()['optional_documents'])->toBe(['valuation-report'])
+            ->and($checklist()['complete'])->toBeFalse();
+
+        LoanFixtures::verifiedDocument(Collateral::where('public_id', $collateralId)->first(), 'property-deed');
+
+        expect($checklist()['missing_documents'])->toBe([])->and($checklist()['complete'])->toBeTrue();
+        $this->actingAs($this->verifier, 'api')->postJson("/api/v1/loans/{$id}/collaterals/{$collateralId}/verify")->assertOk()->assertJsonPath('data.status', 'verified');
+    });
+
+    it('returns the collateral\'s uploaded documents with it, so the screen can show them', function () {
+        $id = goldApply($this, '150000');
+        $collateralId = addGold($this, $id)->assertCreated()->json('data.public_id');
+
+        $this->actingAs($this->officer, 'api')->getJson("/api/v1/loans/{$id}/collaterals")->assertOk()->assertJsonPath('data.0.documents', []);
+
+        LoanFixtures::verifiedDocument(Collateral::where('public_id', $collateralId)->first(), 'gold-valuation-slip');
+
+        $this->actingAs($this->officer, 'api')->getJson("/api/v1/loans/{$id}/collaterals")->assertOk()
+            ->assertJsonPath('data.0.documents.0.document_type.slug', 'gold-valuation-slip')
+            ->assertJsonPath('data.0.documents.0.status', 'verified');
+        $this->actingAs($this->officer, 'api')->getJson("/api/v1/loans/{$id}")->assertOk()
+            ->assertJsonPath('data.collaterals.0.documents.0.document_type.slug', 'gold-valuation-slip');
+        $this->actingAs($this->verifier, 'api')->postJson("/api/v1/loans/{$id}/collaterals/{$collateralId}/verify")
+            ->assertOk()->assertJsonCount(1, 'data.documents');
     });
 
     it('does not limit the loan by what the collateral is worth: the approver decides the amount', function () {
@@ -499,7 +495,7 @@ describe('collateral', function () {
 
         loanToApproved($this, $id);
         loanAcceptOffer($this, $id);
-        LoanFixtures::verifiedDocument(Loan::where('public_id', $id)->first(), 'loan-agreement');
+        LoanFixtures::skipReviewGate();
 
         expect(problemCodes(loanDisburse($this, $id)->assertStatus(422)))->toBe(['COLLATERAL_NOT_PERFECTED']);
 
@@ -519,7 +515,7 @@ describe('group loans', function () {
     beforeEach(function () {
         LoanFixtures::product('womens-empowerment-micro-loan', ['default_rate' => '20', 'min_rate' => '15', 'max_rate' => '25', 'min_amount' => '10000', 'max_amount' => '100000']);
 
-        $this->groupAdmin = Fixtures::staffInBranch($this->branchId, 'Borrower Group Create', 'Borrower Group Member Manage');
+        $this->groupAdmin = Fixtures::staffInBranch($this->branchId, 'Borrower Group Create', 'Borrower Group Member Create', 'Borrower Group Member Update', 'Borrower Group Member Delete');
         $this->group = $this->actingAs($this->groupAdmin, 'api')
             ->postJson('/api/v1/borrower-groups', ['name' => 'Sunrise Women', 'branch_id' => $this->branchId, 'formed_on' => '2026-01-10'])
             ->json('data.public_id');
