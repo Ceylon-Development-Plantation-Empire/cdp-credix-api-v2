@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Settings\StoreSettingRequest;
 use App\Http\Requests\Settings\UpdateSettingRequest;
 use App\Http\Resources\Settings\SettingResource;
 use App\Models\Setting;
@@ -26,7 +27,9 @@ class SettingController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:Setting Index', only: ['index', 'show']),
+            new Middleware('permission:Setting Create', only: ['store']),
             new Middleware('permission:Setting Update', only: ['update']),
+            new Middleware('permission:Setting Delete', only: ['destroy']),
         ];
     }
 
@@ -69,6 +72,43 @@ class SettingController extends Controller implements HasMiddleware
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve setting', $th);
+        }
+    }
+
+    public function store(StoreSettingRequest $request)
+    {
+        try {
+            $setting = $this->settings->create($request->validated(), $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Setting created successfully',
+                'data' => new SettingResource($setting),
+            ], 201);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to create setting', $th);
+        }
+    }
+
+    public function destroy(string $key)
+    {
+        try {
+            $setting = Setting::where('key', $key)->first();
+
+            if (! $setting) {
+                return $this->notFound('Setting not found');
+            }
+
+            $this->settings->delete($setting);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Setting deleted successfully',
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to delete setting', $th);
         }
     }
 

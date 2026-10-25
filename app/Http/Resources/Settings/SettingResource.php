@@ -22,6 +22,7 @@ class SettingResource extends JsonResource
             'value' => $this->typedValue(),
             'label' => $this->label,
             'description' => $this->description,
+            'is_custom' => (bool) $this->is_custom,
             'updated_at' => $this->updated_at?->toApiString(),
         ];
     }
