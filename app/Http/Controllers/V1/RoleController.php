@@ -7,6 +7,7 @@ namespace App\Http\Controllers\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CreateRoleRequest;
 use App\Http\Requests\UpdateRoleRequest;
+use App\Support\RoleAccess;
 use App\Traits\ActivityLogTrait;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -76,10 +77,19 @@ class RoleController extends Controller implements HasMiddleware
         try {
             $data = $request->validated();
 
+            // SECURITY: a role cannot hold a permission its creator does not hold.
+            $wanted = Permission::whereIn('id', $data['permissions'] ?? [])->pluck('name');
+            $denied = RoleAccess::ungrantable($request->user(), $wanted);
+
+            if ($denied !== []) {
+                return $this->cannotGrant($denied);
+            }
+
             $role = Role::create([
                 'name' => $data['name'],
                 'guard_name' => 'api',
-                'is_protected' => $data['is_protected'] ?? false,
+                // Only the seeder protects a role; the API never marks one (and never un-marks one).
+                'is_protected' => false,
             ]);
 
             if (isset($data['permissions']) && count($data['permissions']) > 0) {
@@ -147,20 +157,34 @@ class RoleController extends Controller implements HasMiddleware
                 ], 404);
             }
 
-            // Prevent non-Super-Admins from modifying the Super Admin role
-            if ($role->name === 'Super Admin' && ! auth('api')->user()->hasRole('Super Admin')) {
+            // The Super Admin role always holds every permission and keeps its name: the code recognises it by name.
+            if ($role->name === RoleAccess::SUPER_ADMIN) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'Only Super Admin can modify the Super Admin role',
+                    'message' => 'The Super Admin role cannot be changed',
                 ], 403);
+            }
+
+            // A protected (system) role keeps its name for the same reason.
+            if ($role->is_protected && isset($data['name']) && $data['name'] !== $role->name) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'A protected system role cannot be renamed',
+                ], 422);
+            }
+
+            // SECURITY: nobody adds a permission they do not hold themselves (keeping what the role has is fine).
+            if (isset($data['permissions'])) {
+                $wanted = Permission::whereIn('id', $data['permissions'])->pluck('name');
+                $denied = RoleAccess::ungrantable($request->user(), $wanted, $role->permissions->pluck('name'));
+
+                if ($denied !== []) {
+                    return $this->cannotGrant($denied);
+                }
             }
 
             if (isset($data['name'])) {
                 $role->update(['name' => $data['name']]);
-            }
-
-            if (isset($data['is_protected'])) {
-                $role->update(['is_protected' => $data['is_protected']]);
             }
 
             if (isset($data['permissions'])) {
@@ -238,20 +262,30 @@ class RoleController extends Controller implements HasMiddleware
         }
     }
 
+    protected function cannotGrant(array $denied)
+    {
+        return response()->json([
+            'status' => 'error',
+            'code' => 'PERMISSION_CEILING',
+            'message' => 'You cannot give a role permissions you do not hold yourself',
+            'data' => ['permissions' => $denied],
+        ], 403);
+    }
+
     public function getAvailableRoles()
     {
         try {
             $user = auth('api')->user();
 
-            $query = Role::query();
-
-            if ($user->hasRole('Super Admin')) {
-                $query->where('name', '!=', 'Super Admin');
-            }
-
-            $query->where('guard_name', 'api');
-
-            $roles = $query->select('id', 'name', 'guard_name')->get();
+            // The roles this user may give to someone else (see RoleAccess).
+            $roles = Role::query()
+                ->where('guard_name', 'api')
+                ->with('permissions:id,name')
+                ->orderBy('name')
+                ->get()
+                ->filter(fn (Role $role) => RoleAccess::canAssignRole($user, $role->name))
+                ->map(fn (Role $role) => ['id' => $role->id, 'name' => $role->name, 'guard_name' => $role->guard_name])
+                ->values();
 
             return response()->json([
                 'status' => 'success',

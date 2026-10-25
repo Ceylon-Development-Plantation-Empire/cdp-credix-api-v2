@@ -14,6 +14,10 @@ use App\Models\Province;
 use App\Models\Region;
 use App\Models\User;
 use App\Models\Zonal;
+use App\Services\Users\UserService;
+use Spatie\Permission\Models\Role;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rules\Password;
 use App\Traits\ActivityLogTrait;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
@@ -24,6 +28,14 @@ use Illuminate\Support\Facades\Hash;
 class BulkImportService
 {
     use ActivityLogTrait;
+
+    /**
+     * Temporary passwords generated for imported users that came without one (username => password),
+     * returned once to the administrator and never stored in clear.
+     *
+     * @var array<string, string>
+     */
+    protected array $temporaryPasswords = [];
 
     /**
      * Get configuration for all importable tables using Database IDs.
@@ -207,6 +219,10 @@ class BulkImportService
 
         fclose($handle);
 
+        if ($this->temporaryPasswords !== []) {
+            $results['temporary_passwords'] = $this->temporaryPasswords;
+        }
+
         $this->logActivity(
             'BULK_IMPORT_SUCCESS',
             'BulkImport',
@@ -367,19 +383,7 @@ class BulkImportService
 
         // Special handling for Users
         if ($modelClass === User::class) {
-            if (! empty($data['password'])) {
-                $data['password'] = Hash::make($data['password']);
-            } else {
-                $data['password'] = Hash::make($data['username']); // Default fallback
-            }
-            $roleName = $data['role'] ?? null;
-            unset($data['role']);
-
-            $user = User::updateOrCreate([$uniqueKeyField => $data[$uniqueKeyField]], $data);
-
-            if ($roleName) {
-                $user->syncRoles([$roleName]);
-            }
+            $this->importUser($uniqueKeyField, $data, $config['fillable']);
 
             return;
         }
@@ -403,6 +407,53 @@ class BulkImportService
                 throw new \Exception('Database foreign key integrity constraint violation. Please check that referenced parent IDs exist.');
             }
             throw $e;
+        }
+    }
+
+    /**
+     * One user row. SECURITY: the controller only lets a Super Admin import users. Even so, a password is
+     * never derived from the username (a row without one gets a random temporary password, shown once),
+     * every imported password is temporary, the user type and role must be valid, and an existing user's
+     * sessions end when their row is overwritten.
+     *
+     * @param  list<string>  $fillable
+     */
+    protected function importUser(string $uniqueKeyField, array $data, array $fillable): void
+    {
+        $roleName = $data['role'] ?? null;
+        $password = $data['password'] ?? null;
+        $attributes = array_intersect_key($data, array_flip($fillable));
+
+        if (isset($attributes['user_type']) && ! in_array($attributes['user_type'], ['admin', 'staff', 'agency'], true)) {
+            throw new \Exception("Invalid user_type '{$attributes['user_type']}'.");
+        }
+
+        if ($roleName !== null && ! Role::where('name', $roleName)->where('guard_name', 'api')->exists()) {
+            throw new \Exception("Unknown role '{$roleName}'.");
+        }
+
+        if ($password !== null) {
+            $check = Validator::make(['password' => $password], ['password' => [Password::defaults()]]);
+
+            if ($check->fails()) {
+                throw new \Exception('Password is too weak: '.$check->errors()->first('password'));
+            }
+        } else {
+            $password = UserService::temporaryPassword();
+            $this->temporaryPasswords[(string) $data['username']] = $password;
+        }
+
+        $attributes['password'] = $password;
+        $attributes['must_change_password'] = true;
+
+        $user = User::updateOrCreate([$uniqueKeyField => $data[$uniqueKeyField]], $attributes);
+
+        if (! $user->wasRecentlyCreated) {
+            $user->forceFill(['token_version' => $user->token_version + 1])->save();
+        }
+
+        if ($roleName) {
+            $user->syncRoles([$roleName]);
         }
     }
 
@@ -507,7 +558,7 @@ class BulkImportService
             'password' => 'Password@123',
             'user_type' => 'staff',
             'can_login' => '1',
-            'role' => 'Super Admin',
+            'role' => 'Loan Officer',
         ];
 
         $sampleRow = [];

@@ -41,7 +41,7 @@ class CreateUserRequest extends FormRequest
             'email' => ['required', 'email:rfc', 'max:150', 'unique:users,email'],
             'phone' => ['nullable', 'string', 'max:20'],
             'password' => ['required_if:user_type,admin', 'nullable', 'string', 'max:255', Password::defaults()],
-            'user_type' => ['required', 'in:admin,staff'],
+            'user_type' => ['required', 'in:admin,staff,agency'],
             'role' => ['required', 'string', 'exists:roles,name'],
 
             /* Staff: the embedded employee record */

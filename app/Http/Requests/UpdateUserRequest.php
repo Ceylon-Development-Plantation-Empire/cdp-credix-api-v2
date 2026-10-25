@@ -43,7 +43,7 @@ class UpdateUserRequest extends FormRequest
             'email' => ['sometimes', 'email:rfc', 'max:150', Rule::unique('users', 'email')->ignore($id)],
             'phone' => ['sometimes', 'nullable', 'string', 'max:20'],
             'password' => ['sometimes', 'string', 'max:255', Password::defaults()],
-            'user_type' => ['sometimes', 'in:admin,staff'],
+            'user_type' => ['sometimes', 'in:admin,staff,agency'],
             'role' => ['sometimes', 'string', 'exists:roles,name'],
 
             /* Staff: the embedded employee record */

@@ -18,6 +18,24 @@ class ImportController extends Controller implements HasMiddleware
 {
     use ActivityLogTrait;
 
+    /**
+     * What a table import needs besides Bulk Import: the create and update permission of that record type.
+     *
+     * @var array<string, list<string>>
+     */
+    protected const TABLE_PERMISSIONS = [
+        'countries' => ['Country Create', 'Country Update'],
+        'provinces' => ['Province Create', 'Province Update'],
+        'zonals' => ['Zonal Create', 'Zonal Update'],
+        'regions' => ['Region Create', 'Region Update'],
+        'groups' => ['Group Create', 'Group Update'],
+        'branches' => ['Branch Create', 'Branch Update'],
+        'departments' => ['Department Create', 'Department Update'],
+        'designations' => ['Designation Create', 'Designation Update'],
+        'employees' => ['User Create', 'User Update'],
+        'users' => ['User Create', 'User Update'],
+    ];
+
     protected BulkImportService $importService;
 
     public function __construct(BulkImportService $importService)
@@ -126,6 +144,25 @@ class ImportController extends Controller implements HasMiddleware
      */
     public function import(BulkImportRequest $request, string $table): JsonResponse
     {
+        // SECURITY: importing a table needs the same permissions as creating and updating its records one by one.
+        $needs = self::TABLE_PERMISSIONS[$table] ?? null;
+        $user = $request->user();
+
+        if ($needs === null) {
+            return response()->json(['status' => 'error', 'message' => "Unsupported table: {$table}"], 404);
+        }
+
+        foreach ($needs as $permission) {
+            if (! $user->can($permission)) {
+                return response()->json(['status' => 'error', 'code' => 'FORBIDDEN', 'message' => "Importing {$table} needs the permission: {$permission}."], 403);
+            }
+        }
+
+        // Users carry logins and roles: only a Super Admin may import them.
+        if ($table === 'users' && ! $user->hasRole('Super Admin')) {
+            return response()->json(['status' => 'error', 'code' => 'FORBIDDEN', 'message' => 'Only a Super Admin can import users.'], 403);
+        }
+
         try {
             $file = $request->file('file');
 

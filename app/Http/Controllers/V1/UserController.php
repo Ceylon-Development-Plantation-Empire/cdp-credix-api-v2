@@ -10,6 +10,7 @@ use App\Http\Requests\UpdateUserRequest;
 use App\Models\User;
 use App\Policies\UserPolicy;
 use App\Services\Users\UserService;
+use App\Support\RoleAccess;
 use App\Traits\HandlesApiErrors;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -86,6 +87,10 @@ class UserController extends Controller implements HasMiddleware
             return $this->forbidden('Only Super Admin can create admin users');
         }
 
+        if (! RoleAccess::canAssignRole($request->user(), $data['role'])) {
+            return $this->forbidden('You cannot assign a role that holds permissions you do not hold yourself');
+        }
+
         $result = $this->users->create($data, $request->user());
         $user = $result['user']->load(UserService::SCREEN_RELATIONS);
 
@@ -129,6 +134,16 @@ class UserController extends Controller implements HasMiddleware
 
         if (! $this->policy->update($request->user(), $user, $data['user_type'] ?? null)) {
             return $this->forbidden('Only Super Admin can manage admin users');
+        }
+
+        if (isset($data['role'])) {
+            if ($user->id === $request->user()->id && ! $user->hasRole($data['role'])) {
+                return $this->forbidden('You cannot change your own role');
+            }
+
+            if (! RoleAccess::canAssignRole($request->user(), $data['role'])) {
+                return $this->forbidden('You cannot assign a role that holds permissions you do not hold yourself');
+            }
         }
 
         $user = $this->users->update($user, $data)->load(UserService::SCREEN_RELATIONS);
