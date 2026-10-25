@@ -36,7 +36,9 @@ class ChargeTypeController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:Charge Type Index', only: ['index', 'show']),
-            new Middleware('permission:Charge Type Manage', only: ['store', 'update', 'destroy']),
+            new Middleware('permission:Charge Type Create', only: ['store']),
+            new Middleware('permission:Charge Type Update', only: ['update']),
+            new Middleware('permission:Charge Type Delete', only: ['destroy']),
         ];
     }
 

@@ -24,8 +24,10 @@ class CustomerBankAccountController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Customer Index', only: ['index']),
-            new Middleware('permission:Customer Bank Account Manage', only: ['store', 'update', 'destroy']),
+            new Middleware('permission:Customer Bank Account Index', only: ['index', 'show']),
+            new Middleware('permission:Customer Bank Account Create', only: ['store']),
+            new Middleware('permission:Customer Bank Account Update', only: ['update']),
+            new Middleware('permission:Customer Bank Account Delete', only: ['destroy']),
         ];
     }
 
@@ -66,6 +68,26 @@ class CustomerBankAccountController extends Controller implements HasMiddleware
             ], 201);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to add bank account', $th);
+        }
+    }
+
+    public function show(string $publicId, string $accountId)
+    {
+        try {
+            $customer = Customer::where('public_id', $publicId)->first();
+            $account = $customer?->bankAccounts()->where('public_id', $accountId)->first();
+
+            if (! $account) {
+                return $this->notFound('Bank account not found');
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Bank account retrieved successfully',
+                'data' => new BankAccountResource($account),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to retrieve bank account', $th);
         }
     }
 

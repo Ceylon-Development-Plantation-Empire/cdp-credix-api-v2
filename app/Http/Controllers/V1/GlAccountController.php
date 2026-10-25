@@ -27,8 +27,10 @@ class GlAccountController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:GL Account Index', only: ['index']),
-            new Middleware('permission:GL Account Manage', only: ['store', 'update', 'destroy']),
+            new Middleware('permission:GL Account Index', only: ['index', 'show']),
+            new Middleware('permission:GL Account Create', only: ['store']),
+            new Middleware('permission:GL Account Update', only: ['update']),
+            new Middleware('permission:GL Account Delete', only: ['destroy']),
         ];
     }
 
@@ -52,6 +54,25 @@ class GlAccountController extends Controller implements HasMiddleware
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve GL accounts', $th);
+        }
+    }
+
+    public function show(int $id)
+    {
+        try {
+            $account = GlAccount::find($id);
+
+            if (! $account) {
+                return $this->notFound('GL account not found');
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'GL account retrieved successfully',
+                'data' => new GlAccountResource($account),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to retrieve GL account', $th);
         }
     }
 

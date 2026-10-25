@@ -33,7 +33,7 @@ class LoanSecurityController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Loan Create|Loan Update|Loan Collateral Manage|CDP Customer Verification', only: ['investmentLookup']),
+            new Middleware('permission:Loan Create|Loan Update|Loan Collateral Create|CDP Customer Verification', only: ['investmentLookup']),
         ];
     }
 

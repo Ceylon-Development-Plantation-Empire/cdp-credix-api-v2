@@ -21,7 +21,8 @@ class NotificationController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:Notification Index', only: ['index', 'unreadCount']),
-            new Middleware('permission:Notification Mark Read', only: ['markAsRead', 'markAllAsRead', 'destroy']),
+            new Middleware('permission:Notification Delete', only: ['destroy']),
+            new Middleware('permission:Notification Mark Read', only: ['markAsRead', 'markAllAsRead']),
         ];
     }
 

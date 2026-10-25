@@ -41,7 +41,9 @@ class LookupController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:Lookup Index', only: ['types', 'index', 'show']),
-            new Middleware('permission:Lookup Manage', only: ['store', 'update', 'destroy']),
+            new Middleware('permission:Lookup Create', only: ['store']),
+            new Middleware('permission:Lookup Update', only: ['update']),
+            new Middleware('permission:Lookup Delete', only: ['destroy']),
         ];
     }
 

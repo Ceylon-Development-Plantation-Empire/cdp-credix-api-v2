@@ -37,8 +37,10 @@ class LegalTemplateController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Legal Document Index', only: ['index', 'activeList', 'show']),
-            new Middleware('permission:Legal Template Manage', only: ['store', 'update', 'destroy']),
+            new Middleware('permission:Legal Template Index', only: ['index', 'activeList', 'show']),
+            new Middleware('permission:Legal Template Create', only: ['store']),
+            new Middleware('permission:Legal Template Update', only: ['update']),
+            new Middleware('permission:Legal Template Delete', only: ['destroy']),
         ];
     }
 

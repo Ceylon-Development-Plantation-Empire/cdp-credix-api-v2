@@ -31,8 +31,10 @@ class CustomerFinancialController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Customer Index', only: ['index', 'all']),
-            new Middleware('permission:Customer Financial Manage', only: ['store', 'update', 'destroy']),
+            new Middleware('permission:Customer Financial Index', only: ['index', 'all', 'show']),
+            new Middleware('permission:Customer Financial Create', only: ['store']),
+            new Middleware('permission:Customer Financial Update', only: ['update']),
+            new Middleware('permission:Customer Financial Delete', only: ['destroy']),
             new Middleware('permission:Customer Financial Verify', only: ['verify']),
         ];
     }
@@ -159,6 +161,26 @@ class CustomerFinancialController extends Controller implements HasMiddleware
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to update financial item', $th);
+        }
+    }
+
+    public function show(string $publicId, string $id)
+    {
+        try {
+            $customer = Customer::where('public_id', $publicId)->first();
+            $item = $customer?->financials()->find($id);
+
+            if (! $item) {
+                return $this->notFound('Financial item not found');
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Financial item retrieved successfully',
+                'data' => new CustomerFinancialResource($item),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to retrieve financial item', $th);
         }
     }
 

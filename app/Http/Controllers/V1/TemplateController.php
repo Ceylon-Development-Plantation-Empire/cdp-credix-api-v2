@@ -39,7 +39,9 @@ class TemplateController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:Template Index', only: ['index', 'show']),
-            new Middleware('permission:Template Manage', only: ['store', 'update', 'destroy']),
+            new Middleware('permission:Template Create', only: ['store']),
+            new Middleware('permission:Template Update', only: ['update']),
+            new Middleware('permission:Template Delete', only: ['destroy']),
             new Middleware('permission:Notification Log Index', only: ['logs']),
         ];
     }

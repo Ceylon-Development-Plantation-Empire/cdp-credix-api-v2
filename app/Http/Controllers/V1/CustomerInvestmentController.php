@@ -32,7 +32,7 @@ class CustomerInvestmentController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Loan Create|Loan Collateral Manage|CDP Customer Verification', only: ['index']),
+            new Middleware('permission:Loan Create|Loan Collateral Create|CDP Customer Verification', only: ['index']),
         ];
     }
 

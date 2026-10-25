@@ -37,7 +37,9 @@ class LegalDocumentController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:Legal Document Index', only: ['index', 'applications', 'show']),
-            new Middleware('permission:Legal Document Manage', only: ['store', 'update', 'destroy', 'recordPrint']),
+            new Middleware('permission:Legal Document Create', only: ['store']),
+            new Middleware('permission:Legal Document Update', only: ['update', 'recordPrint']),
+            new Middleware('permission:Legal Document Delete', only: ['destroy']),
         ];
     }
 

@@ -36,7 +36,9 @@ class BorrowerGroupController extends Controller implements HasMiddleware
             new Middleware('permission:Borrower Group Index', only: ['index', 'show']),
             new Middleware('permission:Borrower Group Create', only: ['store']),
             new Middleware('permission:Borrower Group Update', only: ['update']),
-            new Middleware('permission:Borrower Group Member Manage', only: ['addMember', 'changeRole', 'removeMember']),
+            new Middleware('permission:Borrower Group Member Create', only: ['addMember']),
+            new Middleware('permission:Borrower Group Member Update', only: ['changeRole']),
+            new Middleware('permission:Borrower Group Member Delete', only: ['removeMember']),
         ];
     }
 

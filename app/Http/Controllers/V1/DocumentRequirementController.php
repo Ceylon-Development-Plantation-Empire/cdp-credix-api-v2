@@ -24,7 +24,7 @@ class DocumentRequirementController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Document Requirement Index', only: ['index']),
+            new Middleware('permission:Document Requirement Index', only: ['index', 'show']),
             new Middleware('permission:Document Requirement Create', only: ['store']),
             new Middleware('permission:Document Requirement Update', only: ['update']),
             new Middleware('permission:Document Requirement Delete', only: ['destroy']),
@@ -78,6 +78,25 @@ class DocumentRequirementController extends Controller implements HasMiddleware
             ], 201);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to create document requirement', $th);
+        }
+    }
+
+    public function show(string $id)
+    {
+        try {
+            $requirement = DocumentRequirement::with(['product', 'documentType'])->find($id);
+
+            if (! $requirement) {
+                return $this->notFound('Document requirement not found');
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Document requirement retrieved successfully',
+                'data' => new DocumentRequirementResource($requirement),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to retrieve document requirement', $th);
         }
     }
 
