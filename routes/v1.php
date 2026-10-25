@@ -28,6 +28,7 @@ use App\Http\Controllers\V1\DocumentController;
 use App\Http\Controllers\V1\EnumController;
 use App\Http\Controllers\V1\DocumentRequirementController;
 use App\Http\Controllers\V1\DocumentTypeController;
+use App\Http\Controllers\V1\EmployeeController;
 use App\Http\Controllers\V1\EmployeeHierarchyController;
 use App\Http\Controllers\V1\GlAccountController;
 use App\Http\Controllers\V1\GlJournalController;
@@ -181,6 +182,11 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
     // Employee Hierarchy
     Route::prefix('employees')->group(function () {
         Route::get('list', [StaffDirectoryController::class, 'employees']);
+        Route::get('/', [EmployeeController::class, 'index']);
+        Route::post('/', [EmployeeController::class, 'store']);
+        Route::get('{id}', [EmployeeController::class, 'show'])->whereNumber('id');
+        Route::put('{id}', [EmployeeController::class, 'update'])->whereNumber('id');
+        Route::delete('{id}', [EmployeeController::class, 'destroy'])->whereNumber('id');
         Route::get('{id}/manager-history', [EmployeeHierarchyController::class, 'getHistory']);
         Route::post('{id}/reassign-manager', [EmployeeHierarchyController::class, 'reassignManager']);
         Route::get('{id}/hierarchy-as-of', [EmployeeHierarchyController::class, 'getHierarchyAsOf']);
@@ -217,8 +223,10 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
     // System Settings
     Route::prefix('settings')->group(function () {
         Route::get('/', [SettingController::class, 'index']);
+        Route::post('/', [SettingController::class, 'store']);
         Route::get('{key}', [SettingController::class, 'show']);
         Route::put('{key}', [SettingController::class, 'update']);
+        Route::delete('{key}', [SettingController::class, 'destroy']);
     });
 
     // Code lists managed by the business (banks, categories, relationships, branch / employee
@@ -296,6 +304,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
 
     Route::prefix('document-requirements')->group(function () {
         Route::get('/', [DocumentRequirementController::class, 'index']);
+        Route::get('{id}', [DocumentRequirementController::class, 'show']);
         Route::post('/', [DocumentRequirementController::class, 'store']);
         Route::put('{id}', [DocumentRequirementController::class, 'update']);
         Route::delete('{id}', [DocumentRequirementController::class, 'destroy']);
@@ -332,12 +341,14 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
 
         Route::get('{publicId}/financials', [CustomerFinancialController::class, 'index']);
         Route::post('{publicId}/financials', [CustomerFinancialController::class, 'store']);
+        Route::get('{publicId}/financials/{id}', [CustomerFinancialController::class, 'show']);
         Route::put('{publicId}/financials/{id}', [CustomerFinancialController::class, 'update']);
         Route::delete('{publicId}/financials/{id}', [CustomerFinancialController::class, 'destroy']);
         Route::post('{publicId}/financials/{id}/verify', [CustomerFinancialController::class, 'verify']);
 
         Route::get('{publicId}/bank-accounts', [CustomerBankAccountController::class, 'index']);
         Route::post('{publicId}/bank-accounts', [CustomerBankAccountController::class, 'store']);
+        Route::get('{publicId}/bank-accounts/{accountId}', [CustomerBankAccountController::class, 'show']);
         Route::put('{publicId}/bank-accounts/{accountId}', [CustomerBankAccountController::class, 'update']);
         Route::delete('{publicId}/bank-accounts/{accountId}', [CustomerBankAccountController::class, 'destroy']);
 
@@ -375,11 +386,16 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::post('/', [LoanController::class, 'store']);
         Route::get('{publicId}', [LoanController::class, 'show']);
         Route::put('{publicId}', [LoanController::class, 'update']);
+        Route::delete('{publicId}', [LoanController::class, 'destroy']);
+        Route::post('{publicId}/restore', [LoanController::class, 'restore']);
         Route::get('{publicId}/schedule', [LoanController::class, 'schedule']);
         Route::get('{publicId}/schedule-versions', [LoanServicingController::class, 'scheduleVersions']);
         Route::get('{publicId}/restructures', [LoanServicingController::class, 'restructures']);
         Route::get('{publicId}/activities', [LoanController::class, 'activities']);
+        Route::get('{publicId}/notes', [LoanController::class, 'notes']);
         Route::post('{publicId}/notes', [LoanController::class, 'addNote']);
+        Route::put('{publicId}/notes/{noteId}', [LoanController::class, 'updateNote'])->whereNumber('noteId');
+        Route::delete('{publicId}/notes/{noteId}', [LoanController::class, 'destroyNote'])->whereNumber('noteId');
         Route::get('{publicId}/document-checklist', [LoanController::class, 'checklist']);
 
         Route::post('{publicId}/submit', [LoanWorkflowController::class, 'submit']);
@@ -390,7 +406,9 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::post('{publicId}/reject', [LoanWorkflowController::class, 'reject']);
         Route::post('{publicId}/cancel', [LoanWorkflowController::class, 'cancel']);
 
+        Route::get('{publicId}/guarantors', [LoanPartyController::class, 'guarantors']);
         Route::post('{publicId}/guarantors', [LoanPartyController::class, 'addGuarantor']);
+        Route::put('{publicId}/guarantors/{partyId}', [LoanPartyController::class, 'updateGuarantor'])->whereNumber('partyId');
         Route::delete('{publicId}/guarantors/{partyId}', [LoanPartyController::class, 'removeGuarantor'])->whereNumber('partyId');
         Route::post('{publicId}/parties/{partyId}/offer/accept', [LoanPartyController::class, 'acceptOffer'])->whereNumber('partyId');
         // Customer review link: one SMS link and one code per borrower (the customer can ask for corrections)
@@ -408,6 +426,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
 
         Route::get('{publicId}/collaterals', [LoanCollateralController::class, 'index']);
         Route::post('{publicId}/collaterals', [LoanCollateralController::class, 'store']);
+        Route::put('{publicId}/collaterals/{collateralId}', [LoanCollateralController::class, 'update']);
         Route::post('{publicId}/collaterals/cdp-investment', [LoanCollateralController::class, 'storeInvestment']);
         Route::post('{publicId}/collaterals/{collateralId}/verify', [LoanCollateralController::class, 'verify']);
         Route::post('{publicId}/collaterals/{collateralId}/perfect', [LoanCollateralController::class, 'perfect']);
@@ -440,11 +459,16 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
     // Recovery
     Route::prefix('recovery-cases')->group(function () {
         Route::get('/', [RecoveryCaseController::class, 'index']);
+        Route::post('/', [RecoveryCaseController::class, 'store']);
         Route::get('{publicId}', [RecoveryCaseController::class, 'show']);
+        Route::put('{publicId}', [RecoveryCaseController::class, 'update']);
+        Route::delete('{publicId}', [RecoveryCaseController::class, 'destroy']);
         Route::post('{publicId}/assign', [RecoveryCaseController::class, 'assign']);
         Route::post('{publicId}/legal', [RecoveryCaseController::class, 'moveToLegal']);
         Route::get('{publicId}/activities', [RecoveryCaseController::class, 'activities']);
         Route::post('{publicId}/activities', [RecoveryCaseController::class, 'addActivity']);
+        Route::put('{publicId}/activities/{activityId}', [RecoveryCaseController::class, 'updateActivity'])->whereNumber('activityId');
+        Route::delete('{publicId}/activities/{activityId}', [RecoveryCaseController::class, 'destroyActivity'])->whereNumber('activityId');
     });
 
     // Message templates and the log of messages sent
@@ -489,6 +513,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
     // General ledger (manual journals are approved in the approval inbox)
     Route::prefix('gl')->group(function () {
         Route::get('accounts', [GlAccountController::class, 'index']);
+        Route::get('accounts/{id}', [GlAccountController::class, 'show'])->whereNumber('id');
         Route::post('accounts', [GlAccountController::class, 'store']);
         Route::put('accounts/{id}', [GlAccountController::class, 'update'])->whereNumber('id');
         Route::delete('accounts/{id}', [GlAccountController::class, 'destroy'])->whereNumber('id');
@@ -498,6 +523,8 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::post('journals', [GlJournalController::class, 'store']);
         Route::get('journals/export', [GlJournalController::class, 'export'])->middleware('throttle:10,1');
         Route::get('journals/{publicId}', [GlJournalController::class, 'show']);
+        Route::put('journals/{publicId}', [GlJournalController::class, 'update']);
+        Route::delete('journals/{publicId}', [GlJournalController::class, 'destroy']);
 
         Route::get('trial-balance', [GlReportController::class, 'trialBalance']);
         Route::get('reconciliation', [GlReportController::class, 'reconciliation']);
@@ -510,6 +537,8 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::get('/', [PaymentController::class, 'index']);
         Route::post('/', [PaymentController::class, 'store'])->middleware('throttle:60,1');
         Route::get('{publicId}', [PaymentController::class, 'show']);
+        Route::put('{publicId}', [PaymentController::class, 'update']);
+        Route::delete('{publicId}', [PaymentController::class, 'destroy']);
         Route::post('{publicId}/reverse', [PaymentController::class, 'reverse']);
     });
 });
