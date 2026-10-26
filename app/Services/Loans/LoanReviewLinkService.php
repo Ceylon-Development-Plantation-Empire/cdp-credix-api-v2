@@ -355,7 +355,7 @@ class LoanReviewLinkService
 
     protected function maxOpens(): int
     {
-        return max(1, (int) Setting::value('loan_review.max_opens', 2));
+        return max(1, (int) Setting::value('loan_review.max_opens', 3));
     }
 
     /**

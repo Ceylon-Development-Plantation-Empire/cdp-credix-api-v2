@@ -108,7 +108,7 @@ class SettingsSeeder extends Seeder
                 'Approval rate target (%)', 'Approved ÷ (approved + rejected) in the period. 0 = no target.'],
 
             /* Customer review link */
-            ['loan_review.max_opens', 'loans', SettingType::Integer, '2', ['value' => 'required|integer|min:1|max:100'],
+            ['loan_review.max_opens', 'loans', SettingType::Integer, '3', ['value' => 'required|integer|min:1|max:100'],
                 'Review link opens allowed', 'How many times the customer can open the SMS link (each page load counts). After that the branch sends a new link.'],
 
             /* Staff sign-in */

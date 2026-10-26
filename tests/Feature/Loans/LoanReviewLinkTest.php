@@ -10,6 +10,7 @@ use Database\Seeders\DocumentRequirementSeeder;
 use Database\Seeders\ProductCatalogSeeder;
 use Database\Seeders\SettingsSeeder;
 use Database\Seeders\TemplateSeeder;
+use Illuminate\Support\Facades\DB;
 use Tests\Support\Fixtures;
 use Tests\Support\LoanFixtures;
 use App\Services\Loans\DisbursementService;
@@ -157,6 +158,26 @@ describe('the customer on the link', function () {
         $this->getJson("/api/v1/public/loan-review/{$fresh}")->assertOk()->assertJsonPath('data.opens_left', 1);
     });
 
+    it('reads only real columns of the collateral when it works out what the customer confirms', function () {
+        // collaterals has collateral_type_id, not a type column (type is the code of that lookup). SQLite quietly reads an unknown
+        // quoted name as text, MySQL stops with "Unknown column", so the SQL itself is checked.
+        $queries = [];
+        DB::listen(function ($query) use (&$queries) {
+            $queries[] = $query->sql;
+        });
+
+        $token = reviewLink($this);
+        $this->postJson("/api/v1/public/loan-review/{$token}/request-otp")->assertOk();
+
+        $collateralReads = array_filter($queries, fn (string $sql) => str_contains($sql, 'collaterals') && stripos($sql, 'select') === 0);
+
+        expect($collateralReads)->not->toBeEmpty();
+
+        foreach ($collateralReads as $sql) {
+            expect($sql)->not->toMatch('/select\s+[`"]type[`"]/i');
+        }
+    });
+
     it('asks for the confirmation again when the details change afterwards', function () {
         $token = reviewLink($this);
         $this->postJson("/api/v1/public/loan-review/{$token}/request-otp")->assertOk();
@@ -242,7 +263,7 @@ describe('officer assisted confirmation', function () {
         $this->actingAs($this->officer, 'api')->getJson("/api/v1/loans/{$this->loanId}/review/customers/{$customerId}")
             ->assertOk()
             ->assertJsonPath('data.status', 'pending')
-            ->assertJsonPath('data.opens_left', 2)
+            ->assertJsonPath('data.opens_left', 3)
             ->assertJsonPath('data.details.loan.reference', $this->loan->application_no)
             ->assertJsonPath('data.declaration_text', fn ($v) => str_contains($v, 'I confirm'));
 
