@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services\Accounting;
 
+use App\Enums\AllocationComponent;
 use App\Enums\GlJournalStatus;
 use App\Enums\InstallmentStatus;
+use App\Enums\TransactionType;
 use App\Finance\Support\Money;
 use App\Models\Loan;
 use App\Models\LoanInstallment;
@@ -168,10 +170,18 @@ class LedgerReconciliationService
      */
     protected function transactionsHaveJournals(): array
     {
-        $orphans = DB::table('loan_transactions')
-            ->whereNotExists(fn ($q) => $q->from('gl_journals')->whereColumn('gl_journals.loan_transaction_id', 'loan_transactions.id'))
+        // A waiver (or the reversal of one) that forgives only profit which was never recognised as income nets to zero and posts no
+        // journal, by design (LoanPostingService::waiver). Any other transaction, and a waiver that touches principal, charges or
+        // penalties, must have its journal.
+        $orphans = DB::table('loan_transactions as t')
+            ->whereNotExists(fn ($q) => $q->from('gl_journals')->whereColumn('gl_journals.loan_transaction_id', 't.id'))
+            ->where(fn ($q) => $q
+                ->whereNotIn('t.type', [TransactionType::Waiver->value, TransactionType::Reversal->value])
+                ->orWhere(fn ($w) => $w->where('t.type', TransactionType::Reversal->value)
+                    ->whereNotExists(fn ($o) => $o->from('loan_transactions as original')->whereColumn('original.id', 't.reverses_transaction_id')->where('original.type', TransactionType::Waiver->value)))
+                ->orWhereExists(fn ($a) => $a->from('loan_allocations as a')->whereColumn('a.loan_transaction_id', 't.id')->where('a.component', '!=', AllocationComponent::Profit->value)))
             ->limit(100)
-            ->pluck('txn_no');
+            ->pluck('t.txn_no');
 
         return [
             'ok' => $orphans->isEmpty(),
