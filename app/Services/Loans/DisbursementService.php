@@ -209,15 +209,13 @@ class DisbursementService
             }
         }
 
-        // On unless the business switches it off (setting loan_review.required_before_disbursement): the customer
-        // confirmed their details and the terms on the review link, or with an officer, and nothing changed
-        // since. A customer who asked for a correction has not confirmed, so the loan waits for it.
-        if (Setting::value('loan_review.required_before_disbursement', true)) {
-            foreach ($borrowingLoans as $each) {
-                foreach ($this->reviews->recipients($each) as $party) {
-                    if (! $this->reviews->isConfirmed($party)) {
-                        $problems[] = ['code' => 'REVIEW_NOT_CONFIRMED', 'message' => 'The customer has not confirmed their details and the loan terms (review link).', 'customer_no' => $party->customer->customer_no];
-                    }
+        // Always: a loan is paid out only after every borrower confirmed their details and the approved terms with their code
+        // (the review link, or an officer confirming it with them) and nothing changed since. A customer who asked for a correction
+        // has not confirmed, so the loan waits for it.
+        foreach ($borrowingLoans as $each) {
+            foreach ($this->reviews->recipients($each) as $party) {
+                if (! $this->reviews->isConfirmed($party)) {
+                    $problems[] = ['code' => 'REVIEW_NOT_CONFIRMED', 'message' => 'The customer has not confirmed their details and the loan terms (review link).', 'customer_no' => $party->customer->customer_no];
                 }
             }
         }

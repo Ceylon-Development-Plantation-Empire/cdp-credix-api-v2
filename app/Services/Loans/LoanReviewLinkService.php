@@ -40,9 +40,10 @@ use Illuminate\Support\Str;
 class LoanReviewLinkService
 {
     /**
-     * The link can be sent from submission until the loan is paid out.
+     * The link and the code are used once, after the customer accepted the approved offer and before the loan is paid out: what the
+     * customer confirms is the final terms, so it is never asked earlier.
      */
-    protected const OPEN_STATUSES = [LoanStatus::Submitted, LoanStatus::InReview, LoanStatus::Verified, LoanStatus::Approved, LoanStatus::Accepted];
+    protected const OPEN_STATUSES = [LoanStatus::Accepted];
 
     /**
      * Open correction requests one person can have at the same time.
@@ -515,7 +516,7 @@ class LoanReviewLinkService
     protected function assertOpen(Loan $loan): void
     {
         if (! in_array($loan->status, self::OPEN_STATUSES, true)) {
-            throw new BusinessRuleException('REVIEW_NOT_OPEN', 'The review link is used after the application is submitted and before the loan is paid out.', 409);
+            throw new BusinessRuleException('REVIEW_NOT_OPEN', 'The review link and the confirmation code are used after the customer has accepted the offer and before the loan is paid out.', 409);
         }
     }
 

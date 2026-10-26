@@ -110,8 +110,6 @@ class SettingsSeeder extends Seeder
             /* Customer review link */
             ['loan_review.max_opens', 'loans', SettingType::Integer, '2', ['value' => 'required|integer|min:1|max:100'],
                 'Review link opens allowed', 'How many times the customer can open the SMS link (each page load counts). After that the branch sends a new link.'],
-            ['loan_review.required_before_disbursement', 'loans', SettingType::Boolean, '1', ['value' => 'required|boolean'],
-                'Customer review needed to disburse', 'When on (the default), a loan is not disbursed until every borrower has confirmed the review link with their code (or an officer confirmed it with them). This replaces the signed paper agreement.'],
 
             /* Staff sign-in */
             ['security.login_max_attempts', 'security', SettingType::Integer, '10', ['value' => 'required|integer|min:3|max:50'],
