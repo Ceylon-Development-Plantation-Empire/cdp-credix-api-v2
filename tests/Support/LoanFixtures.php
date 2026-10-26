@@ -14,14 +14,14 @@ use App\Models\Loan;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Role;
-use App\Models\Setting;
 use App\Models\User;
 use App\Services\Loans\DisbursementService;
 use App\Services\Loans\LoanPartyService;
+use App\Services\Loans\LoanReviewLinkService;
 use App\Services\Loans\LoanPricingService;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\Cache;
+use ReflectionMethod;
 use Illuminate\Support\Str;
 
 /**
@@ -142,14 +142,34 @@ final class LoanFixtures
     }
 
     /**
-     * Switch the "customer confirmed the review link" gate off, for tests of other steps (it has its own tests).
+     * Every borrower of the loan has confirmed their details and the terms on the review link (OTP 2). A test of another step uses
+     * this instead of going through the SMS code (that flow has its own tests). Call it once the terms are final.
      */
-    public static function skipReviewGate(): void
+    public static function confirmReview(Loan $loan): void
     {
-        Setting::query()->updateOrCreate(['key' => 'loan_review.required_before_disbursement'], [
-            'group' => 'loans', 'type' => 'boolean', 'value' => '0', 'rules' => ['value' => 'required|boolean'], 'label' => 'Customer review needed to disburse',
-        ]);
-        Cache::forget(Setting::cacheKey('loan_review.required_before_disbursement'));
+        $service = app(LoanReviewLinkService::class);
+        $hash = new ReflectionMethod($service, 'hashFor');
+        $hash->setAccessible(true);
+
+        foreach ($service->recipients($loan->refresh()) as $party) {
+            $party->forceFill(['review_confirmed_at' => now(), 'review_hash' => $hash->invoke($service, $party)])->save();
+        }
+    }
+
+    /**
+     * An individual loan approved today, accepted by its borrower (the step before the customer's confirmation and the payout).
+     */
+    public static function acceptedLoan(int $branchId, string $productSlug, string $amount, int $tenure, ?Customer $borrower = null): Loan
+    {
+        $loan = self::approvedLoan($branchId, $productSlug, $amount, $tenure, $borrower);
+        $loan->forceFill(['status' => 'accepted'])->save();
+
+        $loan->parties()->first()->forceFill([
+            'consented_at' => now(),
+            'consent_hash' => hash('sha256', json_encode(app(LoanPartyService::class)->offerTerms($loan->refresh()))),
+        ])->save();
+
+        return $loan->refresh();
     }
 
     /**
@@ -159,21 +179,15 @@ final class LoanFixtures
      */
     public static function disbursedLoan(int $branchId, string $productSlug, string $amount, int $tenure, ?Customer $borrower = null, ?CarbonImmutable $disbursedOn = null, ?callable $beforeDisburse = null): Loan
     {
-        $loan = self::approvedLoan($branchId, $productSlug, $amount, $tenure, $borrower);
-        $loan->forceFill(['status' => 'accepted'])->save();
-
-        $party = $loan->parties()->first();
-        $party->forceFill([
-            'consented_at' => now(),
-            'consent_hash' => hash('sha256', json_encode(app(LoanPartyService::class)->offerTerms($loan->refresh()))),
-        ])->save();
-
-        // The customer review has its own tests; a fixture that does not exercise it switches the gate off.
-        self::skipReviewGate();
+        $loan = self::acceptedLoan($branchId, $productSlug, $amount, $tenure, $borrower);
 
         if ($beforeDisburse) {
             $beforeDisburse($loan);
         }
+
+        // The customer's confirmation has its own tests; a fixture of another step records it as given, last, because what the
+        // customer confirms includes the securities and guarantors added above.
+        self::confirmReview($loan);
 
         $disburser = Fixtures::staffInBranch($branchId, 'Loan Disburse');
         $restore = Carbon::getTestNow();

@@ -151,7 +151,7 @@ describe('workflow', function () {
         $this->actingAs($this->officer, 'api')->getJson("/api/v1/loans/{$id}")->assertJsonPath('data.status', 'accepted');
 
         $loan = Loan::where('public_id', $id)->first();
-        LoanFixtures::skipReviewGate();
+        LoanFixtures::confirmReview($loan);
 
         loanDisburse($this, $id)->assertOk()
             ->assertJsonPath('data.status', 'active')
@@ -189,7 +189,7 @@ describe('workflow', function () {
         $this->actingAs($everything, 'api')->postJson("/api/v1/loans/{$id}/approve")->assertOk();
 
         loanAcceptOffer($this, $id);
-        LoanFixtures::skipReviewGate();
+        LoanFixtures::confirmReview(Loan::where('public_id', $id)->first());
 
         $this->actingAs($everything, 'api')->withHeader('Idempotency-Key', 'disb-key-0002')
             ->postJson("/api/v1/loans/{$id}/disburse", ['channel' => 'cash'])
@@ -495,7 +495,7 @@ describe('collateral', function () {
 
         loanToApproved($this, $id);
         loanAcceptOffer($this, $id);
-        LoanFixtures::skipReviewGate();
+        LoanFixtures::confirmReview(Loan::where('public_id', $id)->first());
 
         expect(problemCodes(loanDisburse($this, $id)->assertStatus(422)))->toBe(['COLLATERAL_NOT_PERFECTED']);
 

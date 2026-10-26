@@ -12,6 +12,7 @@ use Database\Seeders\SettingsSeeder;
 use Database\Seeders\TemplateSeeder;
 use Tests\Support\Fixtures;
 use Tests\Support\LoanFixtures;
+use App\Services\Loans\DisbursementService;
 
 /*
 | The customer review link: one SMS link and one code per borrower; the customer can ask for
@@ -24,8 +25,10 @@ beforeEach(function () {
     $this->sms = Fixtures::fakeSms();
     LoanFixtures::product('sme-loan', ['min_guarantors' => 0, 'max_guarantors' => 2]);
     $this->officer = Fixtures::staffInBranch($this->branchId, 'Loan Index', 'Loan Offer Manage');
-    $this->loan = LoanFixtures::approvedLoan($this->branchId, 'sme-loan', '150000', 12);
+    // The customer confirms after accepting the approved offer, before the payout.
+    $this->loan = LoanFixtures::acceptedLoan($this->branchId, 'sme-loan', '150000', 12);
     $this->loanId = $this->loan->public_id;
+    $this->customerPublicId = $this->loan->customer->public_id;
 });
 
 function reviewLink($test): string
@@ -274,15 +277,53 @@ describe('officer assisted confirmation', function () {
 });
 
 describe('before disbursement', function () {
-    it('can be required by a setting', function () {
-        $required = fn () => Setting::where('key', 'loan_review.required_before_disbursement')->firstOrFail()->forceFill(['value' => '1'])->save();
+    it('never pays out until every borrower has confirmed with their code, and pays out once they have', function () {
+        $disburser = Fixtures::staffInBranch($this->branchId, 'Loan Disburse');
+        $disburse = fn () => app(DisbursementService::class)->disburse($this->loan->refresh(), ['channel' => 'cash'], 'disb-review-0001', $disburser);
 
         try {
-            LoanFixtures::disbursedLoan($this->branchId, 'sme-loan', '120000', 12, null, null, $required);
-            $this->fail('The loan was disbursed without the customer review.');
+            $disburse();
+            $this->fail('The loan was paid out without the customer confirmation.');
         } catch (BusinessRuleException $e) {
             expect($e->errorCode)->toBe('LOAN_NOT_READY')
                 ->and(collect($e->context['problems'])->pluck('code')->all())->toBe(['REVIEW_NOT_CONFIRMED']);
         }
+
+        LoanFixtures::confirmReview($this->loan);
+
+        expect($disburse()->status->value)->toBe('active');
+    });
+
+    it('has no switch to turn the requirement off', function () {
+        expect(Setting::where('key', 'loan_review.required_before_disbursement')->exists())->toBeFalse();
+
+        // Even a leftover setting row saying "off" changes nothing.
+        Setting::create(['key' => 'loan_review.required_before_disbursement', 'group' => 'loans', 'type' => 'boolean', 'value' => '0', 'rules' => ['value' => 'required|boolean'], 'label' => 'x']);
+        $disburser = Fixtures::staffInBranch($this->branchId, 'Loan Disburse');
+
+        expect(fn () => app(DisbursementService::class)->disburse($this->loan->refresh(), ['channel' => 'cash'], 'disb-review-0002', $disburser))
+            ->toThrow(BusinessRuleException::class);
+    });
+
+    it('asks again when the terms changed after the customer confirmed', function () {
+        LoanFixtures::confirmReview($this->loan);
+        Loan::where('public_id', $this->loanId)->first()->forceFill(['tenure' => 18])->save();
+        $disburser = Fixtures::staffInBranch($this->branchId, 'Loan Disburse');
+
+        expect(fn () => app(DisbursementService::class)->disburse($this->loan->refresh(), ['channel' => 'cash'], 'disb-review-0003', $disburser))
+            ->toThrow(BusinessRuleException::class);
+    });
+});
+
+describe('when the link and the code are open', function () {
+    it('only after the customer accepted the offer', function (string $status) {
+        Loan::where('public_id', $this->loanId)->first()->forceFill(['status' => $status])->save();
+
+        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$this->loanId}/review/send-link")->assertStatus(409)->assertJsonPath('code', 'REVIEW_NOT_OPEN');
+        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$this->loanId}/review/customers/{$this->customerPublicId}/send-otp", ['reason' => 'The customer has no phone for the link'])->assertStatus(409)->assertJsonPath('code', 'REVIEW_NOT_OPEN');
+    })->with(['draft', 'submitted', 'in_review', 'returned', 'verified', 'approved']);
+
+    it('and sends once the offer is accepted', function () {
+        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$this->loanId}/review/send-link")->assertOk()->assertJsonPath('data.customers.0.status', 'pending');
     });
 });
