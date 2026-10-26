@@ -223,6 +223,8 @@ class PermissionsSeeder extends Seeder
             ['name' => 'Loan Cancel', 'group_name' => 'Loan Permissions'],
             // Removes an application that was never paid out (draft, returned, rejected, cancelled), with a reason.
             ['name' => 'Loan Delete', 'group_name' => 'Loan Permissions'],
+            // Deletes a loan that was already paid out: its accounting entries are reversed to zero and it can be restored.
+            ['name' => 'Loan Delete After Payout', 'group_name' => 'Loan Permissions'],
             // Brings a deleted application back, with its guarantors, collateral and documents.
             ['name' => 'Loan Restore', 'group_name' => 'Loan Permissions'],
             // Special case: give a customer more than one open loan, with a written reason. Hand it out very rarely.

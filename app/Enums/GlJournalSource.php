@@ -25,5 +25,10 @@ enum GlJournalSource: string
     // Monthly top-up or release of the provision for loan losses.
     case Provision = 'provision';
 
+    // A loan deleted after it was paid out: every journal it produced is mirrored back to zero (and mirrored again when it is restored).
+    case LoanVoid = 'loan_void';
+
+    case LoanVoidRestore = 'loan_void_restore';
+
     case Manual = 'manual';
 }

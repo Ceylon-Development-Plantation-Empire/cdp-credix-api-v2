@@ -245,6 +245,7 @@ class GlReportService
 
         $total = LoanInstallment::query()
             ->join('loans', 'loans.id', '=', 'loan_installments.loan_id')
+            ->whereNull('loans.deleted_at')
             ->where('loan_installments.status', '!=', InstallmentStatus::Rescheduled->value)
             ->where('loans.finance_basis', $basis->value)
             ->when($branchId !== null, fn (Builder $q) => $q->where('loans.branch_id', $branchId))

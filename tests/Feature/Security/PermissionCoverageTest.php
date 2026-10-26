@@ -85,7 +85,7 @@ it('has no permission that nothing checks', function () {
     $checkedInCode = [
         'Product Shariah Approve', 'Payment Reversal Approve', 'Payment Backdate Approve', 'Penalty Waiver Approve',
         'Loan Restructure Approve', 'Loan Write Off Approve', 'GL Journal Approve', 'Loan Approve Special',
-        'Branch Data All', 'Customer View Sensitive', 'Loan Multiple Open Allow',
+        'Branch Data All', 'Customer View Sensitive', 'Loan Multiple Open Allow', 'Loan Delete After Payout',
     ];
     $known = array_column(PermissionsSeeder::catalog(), 'name');
     $used = collect(backOfficeRoutes())->flatMap(fn (LaravelRoute $r) => permissionsOf($r))->unique()->all();

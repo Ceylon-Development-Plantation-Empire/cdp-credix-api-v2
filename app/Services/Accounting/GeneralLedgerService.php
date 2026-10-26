@@ -168,6 +168,79 @@ class GeneralLedgerService
     }
 
     /**
+     * A loan is deleted after it was paid out: every posted journal it produced is mirrored (debits and credits swapped), so
+     * the loan leaves the books as if it had never been entered, and the original entries stay for the audit trail. Done once
+     * per journal; the mirror carries source_key "void:{journal id}".
+     *
+     * @param  list<int>  $loanIds
+     * @return int the number of mirror journals posted
+     */
+    public function voidLoanJournals(array $loanIds, string $reason, User $by): int
+    {
+        $journals = GlJournal::withoutGlobalScopes()
+            ->whereIn('loan_id', $loanIds)
+            ->where('status', GlJournalStatus::Posted->value)
+            ->whereNotIn('source', [GlJournalSource::LoanVoid->value, GlJournalSource::LoanVoidRestore->value])
+            ->with('lines.account')
+            ->orderBy('id')
+            ->get();
+
+        $posted = 0;
+
+        foreach ($journals as $journal) {
+            $posted += $this->mirror($journal, GlJournalSource::LoanVoid, "void:{$journal->id}", "Void of {$journal->journal_no}: {$reason}", $by) ? 1 : 0;
+        }
+
+        return $posted;
+    }
+
+    /**
+     * The deleted loan is restored: its void journals are mirrored again, which puts the original entries back in the books.
+     *
+     * @param  list<int>  $loanIds
+     * @return int the number of journals posted
+     */
+    public function restoreLoanJournals(array $loanIds, User $by): int
+    {
+        $voids = GlJournal::withoutGlobalScopes()
+            ->whereIn('loan_id', $loanIds)
+            ->where('source', GlJournalSource::LoanVoid->value)
+            ->where('status', GlJournalStatus::Posted->value)
+            ->with('lines.account')
+            ->orderBy('id')
+            ->get();
+
+        $posted = 0;
+
+        foreach ($voids as $void) {
+            $posted += $this->mirror($void, GlJournalSource::LoanVoidRestore, "restore:{$void->id}", "Restore of {$void->journal_no}", $by) ? 1 : 0;
+        }
+
+        return $posted;
+    }
+
+    protected function mirror(GlJournal $journal, GlJournalSource $source, string $key, string $narration, User $by): bool
+    {
+        if (GlJournal::withoutGlobalScopes()->where('source_key', $key)->exists()) {
+            return false;
+        }
+
+        $this->write($source, BusinessDate::today(), $narration, $journal->lines->map(fn (GlJournalLine $line) => [
+            'account' => $line->account,
+            'debit' => Money::of((string) $line->credit),
+            'credit' => Money::of((string) $line->debit),
+            'memo' => $line->memo,
+        ])->all(), [
+            'source_key' => $key,
+            'branch_id' => $journal->branch_id,
+            'loan_id' => $journal->loan_id,
+            'created_by' => $by->id,
+        ]);
+
+        return true;
+    }
+
+    /**
      * Replace your own pending manual journal: the old request is withdrawn and the corrected journal is
      * sent for approval as a new one (a journal waiting for approval is never edited in place).
      *
