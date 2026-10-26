@@ -41,11 +41,11 @@ class UserPolicy
     }
 
     /**
-     * Deactivate a user permanently (DELETE /users/{id}): Super Admin only, never oneself.
+     * Delete a user (DELETE /users/{id}): the permission decides (middleware), never oneself, and an admin account only by a Super Admin.
      */
     public function delete(User $actor, User $target): bool
     {
-        return $actor->hasRole(self::SUPER_ADMIN) && $actor->id !== $target->id;
+        return $actor->id !== $target->id && $this->update($actor, $target);
     }
 
     /**

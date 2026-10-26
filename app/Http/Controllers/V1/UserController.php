@@ -9,6 +9,7 @@ use App\Http\Requests\CreateUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Models\User;
 use App\Policies\UserPolicy;
+use App\Services\Users\UserDeletionService;
 use App\Services\Users\UserService;
 use App\Support\RoleAccess;
 use App\Traits\HandlesApiErrors;
@@ -32,6 +33,7 @@ class UserController extends Controller implements HasMiddleware
     public function __construct(
         protected UserService $users,
         protected UserPolicy $policy,
+        protected UserDeletionService $deletion,
     ) {}
 
     /**
@@ -43,7 +45,7 @@ class UserController extends Controller implements HasMiddleware
             new Middleware('permission:User Index', only: ['index', 'show']),
             new Middleware('permission:User Create', only: ['store']),
             new Middleware('permission:User Update', only: ['update']),
-            new Middleware('permission:User Delete', only: ['destroy']),
+            new Middleware('permission:User Delete', only: ['destroy', 'deleteImpact']),
             new Middleware('permission:User Toggle Status', only: ['toggleStatus']),
         ];
     }
@@ -156,8 +158,27 @@ class UserController extends Controller implements HasMiddleware
     }
 
     /**
-     * DELETE /users/{id}: deactivates the account permanently (users are never deleted; their
-     * name stays on approvals, postings and the audit trail).
+     * GET /users/{id}/delete-impact: everything the user is linked to and whether they can be deleted (the delete modal).
+     */
+    public function deleteImpact(Request $request, string $id): JsonResponse
+    {
+        $user = User::find($id);
+
+        if (! $user) {
+            return $this->notFound('User not found');
+        }
+
+        if (! $this->policy->delete($request->user(), $user)) {
+            return $this->forbidden('You cannot delete this user');
+        }
+
+        return response()->json(['status' => 'success', 'data' => $this->deletion->impact($user)], 200);
+    }
+
+    /**
+     * DELETE /users/{id}: deletes the user for good. Refused while the user is the officer of an open loan. When the user
+     * appears in other records the body must carry confirm_username: the sign-in name (or email) typed in full.
+     * Use PATCH /users/{id}/toggle-status to only switch a user off.
      */
     public function destroy(Request $request, string $id): JsonResponse
     {
@@ -172,14 +193,17 @@ class UserController extends Controller implements HasMiddleware
         }
 
         if (! $this->policy->delete($request->user(), $user)) {
-            return $this->forbidden('Only Super Admin can delete users');
+            return $this->forbidden('You cannot delete this user');
         }
 
-        $this->users->deactivate($user);
+        $request->validate(['confirm_username' => ['sometimes', 'nullable', 'string', 'max:191']]);
+
+        $impact = $this->deletion->delete($user, $request->user(), $request->input('confirm_username'));
 
         return response()->json([
             'status' => 'success',
-            'message' => 'User deleted successfully',
+            'message' => 'User deleted permanently',
+            'data' => ['records_unlinked' => $impact['total']],
         ], 200);
     }
 
