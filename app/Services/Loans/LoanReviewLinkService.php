@@ -666,7 +666,7 @@ class LoanReviewLinkService
             'net' => (string) $loan->net_disbursement_amount,
             'guarantors' => $customerNos($others->filter(fn (LoanParty $p) => $p->role === PartyRole::Guarantor)),
             'co_borrowers' => $customerNos($others->filter(fn (LoanParty $p) => $p->role->isBorrowing())),
-            'collaterals' => $loan->collaterals()->orderBy('id')->get(['type', 'market_value'])->map(fn ($c) => [$c->type, (string) $c->market_value])->all(),
+            'collaterals' => $loan->collaterals()->orderBy('id')->get(['collateral_type_id', 'market_value'])->map(fn ($c) => [$c->type, (string) $c->market_value])->all(),
         ];
     }
 
