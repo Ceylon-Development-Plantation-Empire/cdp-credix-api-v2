@@ -240,10 +240,10 @@ describe('workflow', function () {
         $this->actingAs($this->reviewer, 'api')->postJson("/api/v1/loans/{$id}/return", ['remarks' => 'Tenure too long for the purpose'])->assertOk()
             ->assertJsonPath('data.status', 'returned');
 
-        // Only draft and returned applications can change.
+        // Returned applications change freely; after the next submission a change needs a reason (see FullCrudTest).
         $this->actingAs($this->officer, 'api')->putJson("/api/v1/loans/{$id}", ['tenure' => 12])->assertOk()->assertJsonPath('data.terms.tenure', 12);
         $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/submit")->assertOk()->assertJsonPath('data.status', 'submitted');
-        $this->actingAs($this->officer, 'api')->putJson("/api/v1/loans/{$id}", ['tenure' => 18])->assertStatus(409)->assertJsonPath('code', 'LOAN_NOT_EDITABLE');
+        $this->actingAs($this->officer, 'api')->putJson("/api/v1/loans/{$id}", ['tenure' => 18])->assertStatus(422)->assertJsonPath('code', 'EDIT_REASON_REQUIRED');
     });
 
     it('records the borrower acceptance without sending any code', function () {

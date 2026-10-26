@@ -79,6 +79,12 @@ class LoanWorkflowService
             $this->move($each, $from, $to, $by, $remarks, $metadata, $reason);
         }
 
+        // Sent back after a decision was given: the approval, the offer acceptance and the consents were given on the
+        // old figures, so they are voided and the application goes through the decisions again.
+        if ($to === LoanStatus::Returned && in_array($from, [LoanStatus::Verified, LoanStatus::Approved, LoanStatus::Accepted], true)) {
+            $this->voidDecisions($loans->pluck('id')->all());
+        }
+
         // Delivered after commit: customers are told only about changes that were saved.
         LoanStatusChanged::dispatch($loan, $from, $to);
 
@@ -239,18 +245,19 @@ class LoanWorkflowService
      * @param  list<int>  $loanIds
      */
     /**
-     * A restored application takes back the open-loan keys it held before it was deleted. Only a returned
-     * application held them (a draft never does, a rejected or cancelled one released them).
+     * A restored application takes back the open-loan keys it held before it was deleted: every stage from the one
+     * the setting loan.open_loan_scope names (a draft never holds one, a rejected or cancelled application released it).
      *
      * @param  iterable<Loan>  $loans
      */
     public function reclaimOpenLoanKeys(iterable $loans): void
     {
-        if ($this->openFrom() !== LoanStatus::Submitted) {
-            return;
-        }
+        // A written-off loan keeps its borrowers' key until the debt is recovered (their parties are released then).
+        $holding = $this->openFrom() === LoanStatus::Approved
+            ? [LoanStatus::Approved, LoanStatus::Accepted, LoanStatus::Active, LoanStatus::WrittenOff]
+            : [LoanStatus::Submitted, LoanStatus::InReview, LoanStatus::Returned, LoanStatus::Verified, LoanStatus::Approved, LoanStatus::Accepted, LoanStatus::Active, LoanStatus::WrittenOff];
 
-        $ids = collect($loans)->filter(fn (Loan $loan) => $loan->status === LoanStatus::Returned)->pluck('id')->all();
+        $ids = collect($loans)->filter(fn (Loan $loan) => in_array($loan->status, $holding, true))->pluck('id')->all();
 
         if ($ids !== []) {
             $this->claimOpenLoanKeys($ids);
@@ -266,7 +273,7 @@ class LoanWorkflowService
             return;
         }
 
-        $parties = LoanParty::with('customer')->whereIn('loan_id', $loanIds)->whereIn('role', PartyRole::borrowingValues())->get();
+        $parties = LoanParty::with('customer')->whereIn('loan_id', $loanIds)->whereIn('role', PartyRole::borrowingValues())->whereNull('released_at')->get();
 
         foreach ($parties as $party) {
             try {
@@ -300,6 +307,17 @@ class LoanWorkflowService
     {
         $this->releaseSecurities([$loan->id], $by);
         $this->record($loan, LoanActivityType::Update, $by, 'Written-off debt recovered in full; securities released');
+    }
+
+    /**
+     * @param  list<int>  $loanIds
+     */
+    protected function voidDecisions(array $loanIds): void
+    {
+        Loan::withoutGlobalScope('branch')->whereIn('id', $loanIds)->update([
+            'approved_amount' => null, 'approved_at' => null, 'accepted_at' => null, 'offer_on_hold_at' => null, 'offer_remarks' => null,
+        ]);
+        LoanParty::whereIn('loan_id', $loanIds)->update(['consented_at' => null, 'consent_hash' => null]);
     }
 
     protected function releaseSecurities(array $loanIds, ?User $by): void

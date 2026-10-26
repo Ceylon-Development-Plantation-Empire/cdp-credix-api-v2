@@ -73,22 +73,23 @@ describe('deleting a loan application', function () {
         crudApply($this)->assertCreated();
     });
 
-    it('refuses an application already in the pipeline, and allows it once cancelled', function () {
+    it('removes an application that is already in the pipeline, and a cancelled one', function () {
         $id = crudApply($this)->json('data.public_id');
         $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/submit")->assertOk();
 
-        $this->actingAs($this->officer, 'api')->deleteJson("/api/v1/loans/{$id}", ['remarks' => 'Entered twice'])
-            ->assertStatus(409)->assertJsonPath('code', 'LOAN_NOT_DELETABLE');
+        $this->actingAs($this->officer, 'api')->deleteJson("/api/v1/loans/{$id}", ['remarks' => 'Entered twice'])->assertOk();
+        expect(Loan::withTrashed()->where('public_id', $id)->first()->status->value)->toBe('submitted');
 
-        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/cancel", ['remarks' => 'Customer withdrew'])->assertOk();
-        $this->actingAs($this->officer, 'api')->deleteJson("/api/v1/loans/{$id}", ['remarks' => 'Cleaning up'])->assertOk();
+        $second = crudApply($this)->json('data.public_id');
+        $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$second}/cancel", ['remarks' => 'Customer withdrew'])->assertOk();
+        $this->actingAs($this->officer, 'api')->deleteJson("/api/v1/loans/{$second}", ['remarks' => 'Cleaning up'])->assertOk();
     });
 
-    it('never deletes a loan that was paid out', function () {
+    it('does not delete a loan that was paid out for someone without the permission for that', function () {
         $loan = LoanFixtures::disbursedLoan($this->branchId, 'sme-loan', '120000', 12);
 
         $this->actingAs($this->officer, 'api')->deleteJson("/api/v1/loans/{$loan->public_id}", ['remarks' => 'Mistake'])
-            ->assertStatus(409)->assertJsonPath('code', 'LOAN_NOT_DELETABLE');
+            ->assertStatus(403)->assertJsonPath('code', 'DELETE_AFTER_PAYOUT_NOT_ALLOWED');
         expect($loan->fresh()->trashed())->toBeFalse();
     });
 });

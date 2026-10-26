@@ -35,12 +35,14 @@ enum LoanStatus: string
     {
         return match ($this) {
             self::Draft => [self::Submitted, self::Cancelled],
-            self::Submitted => [self::InReview, self::Cancelled],
+            // Returned is reachable from every stage before payout: an edit to the money terms, or a reviewer, sends the
+            // application back to be reviewed again.
+            self::Submitted => [self::InReview, self::Returned, self::Cancelled],
             self::InReview => [self::Returned, self::Verified, self::Rejected, self::Cancelled],
             self::Returned => [self::Submitted, self::Cancelled],
-            self::Verified => [self::Approved, self::Rejected, self::Cancelled],
-            self::Approved => [self::Accepted, self::Cancelled],
-            self::Accepted => [self::Active, self::Cancelled],
+            self::Verified => [self::Approved, self::Returned, self::Rejected, self::Cancelled],
+            self::Approved => [self::Accepted, self::Returned, self::Cancelled],
+            self::Accepted => [self::Active, self::Returned, self::Cancelled],
             self::Active => [self::Settled, self::WrittenOff],
             self::Settled, self::Rejected, self::Cancelled, self::WrittenOff => [],
         };
@@ -61,9 +63,27 @@ enum LoanStatus: string
     }
 
     /**
-     * Applications can be edited only before they are submitted, or after being returned.
+     * A loan can be edited at every stage (who may is decided by the permission). Once it is paid out only its details change
+     * (purpose, custom fields, application date): the money terms change through the servicing actions (restructure, settlement).
      */
     public function isEditable(): bool
+    {
+        return in_array($this, [self::Draft, self::Submitted, self::InReview, self::Returned, self::Verified, self::Approved, self::Accepted, self::Active, self::Settled, self::WrittenOff], true);
+    }
+
+    /**
+     * The money has gone out: the loan is in the books (schedule, payments, accounting entries).
+     */
+    public function isPaidOut(): bool
+    {
+        return in_array($this, [self::Active, self::Settled, self::WrittenOff], true);
+    }
+
+    /**
+     * Before submission (draft) and while returned for correction, nobody has decided on the figures yet, so they
+     * change freely. At any later stage a change to the money terms needs the application to be reviewed again.
+     */
+    public function changesNeedNoReview(): bool
     {
         return in_array($this, [self::Draft, self::Returned], true);
     }

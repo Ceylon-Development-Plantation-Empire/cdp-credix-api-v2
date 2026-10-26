@@ -69,7 +69,7 @@ describe('the application date', function () {
         openApply($this, $this->officer, LoanFixtures::customer($this->branchId), ['application_date' => $this->today->subDays(2)->toDateString()])->assertCreated();
     });
 
-    it('can be set again while the application is a draft, and not after it is submitted', function () {
+    it('can be set again while the application is a draft, and after submission with a reason', function () {
         $id = openApply($this, $this->officer)->json('data.public_id');
         $day = $this->today->subDays(4)->toDateString();
 
@@ -77,8 +77,12 @@ describe('the application date', function () {
         $this->actingAs($this->officer, 'api')->putJson("/api/v1/loans/{$id}", ['application_date' => $this->today->addDays(2)->toDateString()])->assertStatus(422);
 
         $this->actingAs($this->officer, 'api')->postJson("/api/v1/loans/{$id}/submit")->assertOk();
-        $this->actingAs($this->officer, 'api')->putJson("/api/v1/loans/{$id}", ['application_date' => $this->today->toDateString()])->assertStatus(409)->assertJsonPath('code', 'LOAN_NOT_EDITABLE');
+        $this->actingAs($this->officer, 'api')->putJson("/api/v1/loans/{$id}", ['application_date' => $this->today->toDateString()])->assertStatus(422)->assertJsonPath('code', 'EDIT_REASON_REQUIRED');
         expect(Loan::where('public_id', $id)->first()->application_date->toDateString())->toBe($day);
+
+        // The date is not a money term: with a reason it changes and the application stays where it is.
+        $this->actingAs($this->officer, 'api')->putJson("/api/v1/loans/{$id}", ['application_date' => $this->today->toDateString(), 'remarks' => 'Customer brought the last document today'])
+            ->assertOk()->assertJsonPath('data.status', 'submitted')->assertJsonPath('data.dates.application_date', $this->today->toDateString());
     });
 
     it('is the day applications are counted on the dashboard', function () {

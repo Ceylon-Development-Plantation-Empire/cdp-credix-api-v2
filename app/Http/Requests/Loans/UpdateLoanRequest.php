@@ -30,6 +30,8 @@ class UpdateLoanRequest extends FormRequest
             'customer_public_id' => ['prohibited'],
             'borrower_group_public_id' => ['prohibited'],
 
+            // The reason for a change to an application that was already submitted (required then, checked by the service).
+            'remarks' => ['sometimes', 'nullable', 'string', 'min:3', 'max:1000'],
             'tenure' => ['sometimes', 'integer', 'min:1', 'max:600'],
             'purpose' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'requested_amount' => ['sometimes', 'decimal:0,2', 'gt:0', 'max:9999999999999'],

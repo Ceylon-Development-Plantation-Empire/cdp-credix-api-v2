@@ -6,6 +6,7 @@ namespace App\Services\Loans;
 
 use App\Enums\BorrowerGroupStatus;
 use App\Enums\BorrowerType;
+use App\Enums\CollateralStatus;
 use App\Enums\LoanActivityType;
 use App\Enums\LoanStatus;
 use App\Enums\PartyRole;
@@ -13,14 +14,17 @@ use App\Enums\ProductStatus;
 use App\Enums\RepaymentFrequency;
 use App\Exceptions\BusinessRuleException;
 use App\Finance\Support\Money;
+use App\Models\ApprovalRequest;
 use App\Models\BorrowerGroup;
 use App\Models\BorrowerGroupMember;
 use App\Models\Collateral;
 use App\Models\Customer;
 use App\Models\Loan;
 use App\Models\LoanParty;
+use App\Models\LoanTransaction;
 use App\Models\Product;
 use App\Models\User;
+use App\Services\Accounting\GeneralLedgerService;
 use App\Support\BusinessDate;
 use App\Traits\ActivityLogTrait;
 use Brick\Math\BigDecimal;
@@ -87,6 +91,44 @@ class LoanApplicationService
             $loan = $this->workflow->lock($loan);
             $this->assertEditable($loan);
 
+            // Once the application was submitted, a change needs a reason on the record. A change to the money terms
+            // (amount, term, who borrows) also sends it back to be reviewed again: the reviewer, the approver and the
+            // customer decided on the old figures.
+            $reason = trim((string) ($data['remarks'] ?? ''));
+            $stage = $loan->status;
+
+            if (! $stage->changesNeedNoReview()) {
+                if ($reason === '') {
+                    throw new BusinessRuleException('EDIT_REASON_REQUIRED', 'Give the reason for changing an application that was already submitted.', 422);
+                }
+
+                // Paid out: the loan is in the books. Its details change; the money terms change through a restructure or a settlement.
+                if ($stage->isPaidOut()) {
+                    if ($this->changesMoneyTerms($loan, $data) || array_key_exists('allow_multiple_open', $data)) {
+                        throw new BusinessRuleException('MONEY_TERMS_AFTER_PAYOUT', 'The amount, term and borrowers of a loan that was paid out change through a restructure or a settlement, not by editing it. The purpose, the custom fields and the application date can be edited.', 422);
+                    }
+
+                    $loan->fill(array_intersect_key($data, array_flip(['purpose', 'meta'])) + ['updated_by' => $user->id]);
+
+                    if (isset($data['application_date'])) {
+                        $loan->application_date = $data['application_date'];
+
+                        if ($loan->isGroupFacility()) {
+                            $loan->memberLoans()->update(['application_date' => $data['application_date']]);
+                        }
+                    }
+
+                    $loan->save();
+                    $this->workflow->record($loan, LoanActivityType::Update, $user, "Loan details changed while {$stage->value}: {$reason}", ['fields' => array_keys(array_diff_key($data, ['remarks' => 1])), 'stage' => $stage->value]);
+
+                    return $loan->refresh();
+                }
+
+                if ($this->changesMoneyTerms($loan, $data)) {
+                    $loan = $this->sendBackForReview($loan, $user, $stage, $reason);
+                }
+            }
+
             // First, so the checks below already see whether the application is a special case.
             if (array_key_exists('allow_multiple_open', $data)) {
                 $this->applyMultipleOpen($loan, $data, $user);
@@ -128,7 +170,13 @@ class LoanApplicationService
 
             $loan->save();
 
-            $this->workflow->record($loan, LoanActivityType::Update, $user, 'Application updated', ['fields' => array_keys($data)]);
+            $this->workflow->record(
+                $loan,
+                LoanActivityType::Update,
+                $user,
+                $stage->changesNeedNoReview() ? 'Application updated' : "Application changed while {$stage->value}: {$reason}",
+                ['fields' => array_keys(array_diff_key($data, ['remarks' => 1])), 'stage' => $stage->value],
+            );
 
             return $loan->refresh();
         });
@@ -151,18 +199,51 @@ class LoanApplicationService
 
             $loans = $loan->isGroupFacility() ? $loan->memberLoans()->get()->prepend($loan) : collect([$loan]);
 
+            $ids = $loan->idsWithMemberLoans();
+            $paidOut = $loans->contains(fn (Loan $each) => $each->status->isPaidOut() || $each->installments()->exists());
+
+            // A loan that was paid out is in the books: deleting it reverses its accounting entries, so it has its own permission.
+            if ($paidOut && ! $user->can('Loan Delete After Payout')) {
+                throw new BusinessRuleException('DELETE_AFTER_PAYOUT_NOT_ALLOWED', 'This loan was already paid out. Only someone with the permission "Loan Delete After Payout" can delete it.', 403);
+            }
+
             foreach ($loans as $each) {
-                if (! in_array($each->status, [LoanStatus::Draft, LoanStatus::Returned, LoanStatus::Rejected, LoanStatus::Cancelled], true)
-                    || $each->installments()->exists()) {
-                    throw new BusinessRuleException('LOAN_NOT_DELETABLE', 'Only an application that was never paid out (draft, returned, rejected or cancelled) can be deleted.', 409);
+                // Collateral that is legally in place (mortgage registered, gold in the vault) is released first: by cancelling an application,
+                // by settling or closing a loan. Deleting never leaves a pledged item without a visible record.
+                if ($each->collaterals()->where('status', CollateralStatus::Perfected->value)->exists()) {
+                    throw new BusinessRuleException('COLLATERAL_PERFECTED', $paidOut
+                        ? 'The security of this loan is still in place (registered or in custody). Release it first (settle or close the loan), then delete it.'
+                        : 'The security of this application is already in place (registered or in custody). Cancel the application first so it is released, then delete it.', 409);
+                }
+            }
+
+            if ($paidOut) {
+                $transactionIds = LoanTransaction::whereIn('loan_id', $ids)->pluck('id');
+
+                $pending = ApprovalRequest::withoutGlobalScope('branch')->pending()->where(fn ($q) => $q
+                    ->where(fn ($w) => $w->where('subject_type', (new Loan)->getMorphClass())->whereIn('subject_id', $ids))
+                    ->orWhere(fn ($w) => $w->where('subject_type', (new LoanTransaction)->getMorphClass())->whereIn('subject_id', $transactionIds)))->exists();
+
+                if ($pending) {
+                    throw new BusinessRuleException('PENDING_APPROVALS', 'This loan has requests waiting in the approval inbox (a reversal, a waiver, a restructure, a write-off). Decide or withdraw them first.', 409);
                 }
             }
 
             // One timestamp on the loan and on everything that goes with it: restore brings back exactly those rows.
             $at = now();
 
+            $reversed = 0;
+
+            if ($paidOut) {
+                // Every journal the loan produced is mirrored to zero; the originals stay. The open recovery case is closed.
+                $reversed = app(GeneralLedgerService::class)->voidLoanJournals($ids, $reason, $user);
+
+                DB::table('recovery_cases')->whereIn('loan_id', $ids)->where('status', 'open')
+                    ->update(['status' => 'closed', 'closed_at' => now(), 'open_case_key' => null, 'updated_at' => now()]);
+            }
+
             foreach ($loans as $each) {
-                $this->workflow->record($each, LoanActivityType::Update, $user, "Application deleted: {$reason}");
+                $this->workflow->record($each, LoanActivityType::Update, $user, $paidOut ? "Loan deleted after payout ({$reversed} accounting entries reversed): {$reason}" : "Application deleted: {$reason}");
 
                 // The borrowers let go of their open-loan key, so the customer can apply again.
                 $each->parties()->update(['open_loan_key' => null, 'deleted_at' => $at]);
@@ -221,6 +302,8 @@ class LoanApplicationService
                     });
             }
 
+            $restoredPaidOut = $loans->contains(fn (Loan $each) => $each->status->isPaidOut() || $each->installments()->exists());
+
             foreach ($loans as $each) {
                 $each->documents()->onlyTrashed()->where('deleted_at', $at)->restore();
 
@@ -231,6 +314,11 @@ class LoanApplicationService
 
                 LoanParty::onlyTrashed()->where('loan_id', $each->id)->where('deleted_at', $at)->restore();
                 $each->restore();
+            }
+
+            // A loan that was paid out is back in the books: the mirror of its void journals puts the original entries back.
+            if ($restoredPaidOut) {
+                app(GeneralLedgerService::class)->restoreLoanJournals($loan->idsWithMemberLoans(), $user);
             }
 
             // A returned application held its borrowers' open-loan key; the unique index refuses a second open loan.
@@ -648,8 +736,56 @@ class LoanApplicationService
         }
 
         if (! $loan->status->isEditable()) {
-            throw new BusinessRuleException('LOAN_NOT_EDITABLE', 'An application can only be changed while it is a draft or after it was returned for correction.', 409);
+            throw new BusinessRuleException('LOAN_NOT_EDITABLE', 'This loan cannot be edited.', 409);
         }
+    }
+
+    /**
+     * Would this edit change what the reviewer, the approver or the customer decided on? Amount, term, and who borrows
+     * count; the purpose, the custom fields and the application date do not. The same figures sent again change nothing.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function changesMoneyTerms(Loan $loan, array $data): bool
+    {
+        if (isset($data['tenure']) && (int) $data['tenure'] !== (int) $loan->tenure) {
+            return true;
+        }
+
+        if (isset($data['requested_amount']) && ! Money::of($data['requested_amount'])->isEqualTo(Money::of((string) $loan->requested_amount))) {
+            return true;
+        }
+
+        if (array_key_exists('co_borrower_public_ids', $data)) {
+            $now = $loan->parties()->where('role', PartyRole::CoBorrower->value)->with('customer:id,public_id')->get()->pluck('customer.public_id')->sort()->values()->all();
+
+            if ($now !== collect($data['co_borrower_public_ids'])->sort()->values()->all()) {
+                return true;
+            }
+        }
+
+        if (array_key_exists('members', $data)) {
+            $now = $loan->memberLoans()->open()->with('customer:id,public_id')->get()
+                ->mapWithKeys(fn (Loan $member) => [$member->customer->public_id => (string) Money::of((string) $member->requested_amount)])->sortKeys()->all();
+            $wanted = collect($data['members'])->mapWithKeys(fn (array $row) => [$row['customer_public_id'] => (string) Money::of($row['amount'])])->sortKeys()->all();
+
+            if ($now !== $wanted) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Send an application that is past submission back to "returned": the approval, the offer acceptance and the
+     * guarantors' consent were given on the old figures and are cleared by the workflow, so it goes through review,
+     * verification and approval again with the new ones (members of a group move with their facility).
+     */
+    protected function sendBackForReview(Loan $loan, User $user, LoanStatus $stage, string $reason): Loan
+    {
+        // The workflow also voids the approval, the offer acceptance and the consents when it was already decided.
+        return $this->workflow->transition($loan, LoanStatus::Returned, $user, "Money terms changed while {$stage->value}; sent back for review. Reason: {$reason}")->refresh();
     }
 
     /**
