@@ -9,6 +9,7 @@ use App\Enums\PartyRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Loans\CreateLoanRequest;
 use App\Http\Requests\Loans\LoanRemarksRequest;
+use App\Http\Requests\Loans\PurgeLoanRequest;
 use App\Http\Requests\Loans\UpdateLoanRequest;
 use App\Http\Resources\Loans\LoanActivityResource;
 use App\Http\Resources\Loans\LoanInstallmentResource;
@@ -18,6 +19,7 @@ use App\Models\Customer;
 use App\Models\Loan;
 use App\Models\LoanActivity;
 use App\Services\Loans\LoanApplicationService;
+use App\Services\Loans\LoanPurgeService;
 use App\Services\Loans\LoanChecklistService;
 use App\Services\Loans\LoanPricingService;
 use App\Services\Loans\LoanWorkflowService;
@@ -40,6 +42,7 @@ class LoanController extends Controller implements HasMiddleware
         protected LoanPricingService $pricing,
         protected LoanChecklistService $checklist,
         protected LoanWorkflowService $workflow,
+        protected LoanPurgeService $purger,
     ) {}
 
     public static function middleware(): array
@@ -50,6 +53,7 @@ class LoanController extends Controller implements HasMiddleware
             new Middleware('permission:Loan Update', only: ['update']),
             new Middleware('permission:Loan Delete', only: ['destroy']),
             new Middleware('permission:Loan Restore', only: ['restore']),
+            new Middleware('permission:Loan Delete Permanent', only: ['purge']),
             new Middleware('permission:Loan Note Index', only: ['notes']),
             new Middleware('permission:Loan Note Create', only: ['addNote']),
             new Middleware('permission:Loan Note Update', only: ['updateNote']),
@@ -227,6 +231,32 @@ class LoanController extends Controller implements HasMiddleware
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to restore loan application', $th);
+        }
+    }
+
+    /**
+     * DELETE /loans/{id}/permanent: delete an already deleted application for good, with its guarantors, installments, payments,
+     * collateral and documents; its customers go too when nothing else uses them. Needs the application number typed as
+     * confirm_application_no. A full copy is kept in the activity log.
+     */
+    public function purge(PurgeLoanRequest $request, string $publicId)
+    {
+        try {
+            $loan = Loan::onlyTrashed()->where('public_id', $publicId)->first();
+
+            if (! $loan) {
+                return $this->notFound('Deleted loan not found. Delete the application first, then delete it permanently.');
+            }
+
+            $report = $this->purger->purge($loan, $request->validated('remarks'), $request->validated('confirm_application_no'), $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Loan application deleted permanently',
+                'data' => $report,
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to delete the loan application permanently', $th);
         }
     }
 

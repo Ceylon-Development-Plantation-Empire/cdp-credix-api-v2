@@ -120,6 +120,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
 
     Route::get('users/list', [StaffDirectoryController::class, 'users']);
     Route::patch('users/{id}/toggle-status', [UserController::class, 'toggleStatus']);
+    Route::get('users/{id}/delete-impact', [UserController::class, 'deleteImpact']);
     Route::apiResource('users', UserController::class);
 
     // Countries
@@ -388,6 +389,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::put('{publicId}', [LoanController::class, 'update']);
         Route::delete('{publicId}', [LoanController::class, 'destroy']);
         Route::post('{publicId}/restore', [LoanController::class, 'restore']);
+        Route::delete('{publicId}/permanent', [LoanController::class, 'purge']);
         Route::get('{publicId}/schedule', [LoanController::class, 'schedule']);
         Route::get('{publicId}/schedule-versions', [LoanServicingController::class, 'scheduleVersions']);
         Route::get('{publicId}/restructures', [LoanServicingController::class, 'restructures']);

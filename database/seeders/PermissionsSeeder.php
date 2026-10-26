@@ -227,6 +227,7 @@ class PermissionsSeeder extends Seeder
             ['name' => 'Loan Delete After Payout', 'group_name' => 'Loan Permissions'],
             // Brings a deleted application back, with its guarantors, collateral and documents.
             ['name' => 'Loan Restore', 'group_name' => 'Loan Permissions'],
+            ['name' => 'Loan Delete Permanent', 'group_name' => 'Loan Permissions'],
             // Special case: give a customer more than one open loan, with a written reason. Hand it out very rarely.
             ['name' => 'Loan Multiple Open Allow', 'group_name' => 'Loan Permissions'],
             ['name' => 'Loan Note Index', 'group_name' => 'Loan Permissions'],
