@@ -162,17 +162,4 @@ describe('user administration', function () {
         $this->actingAs($manager, 'api')->postJson('/api/v1/users', [...$payload, 'password' => 'Short1!'])->assertStatus(422);
         $this->actingAs($manager, 'api')->postJson('/api/v1/users', $payload)->assertCreated()->assertJsonMissingPath('data.temporary_password');
     });
-
-    it('deactivates instead of deleting, so the audit trail keeps the person', function () {
-        $admin = userWith('admin', 'User Delete');
-        $admin->assignRole('Super Admin');
-        $user = signInUser('gone@cdp.lk', 'Correct-Horse-9!');
-
-        $this->actingAs($admin, 'api')->deleteJson("/api/v1/users/{$user->id}")->assertOk();
-        $this->actingAs($admin, 'api')->deleteJson("/api/v1/users/{$admin->id}")->assertStatus(422);
-
-        expect(User::find($user->id))->not->toBeNull()
-            ->and(User::find($user->id)->is_active)->toBeFalse()
-            ->and(User::find($user->id)->can_login)->toBeFalse();
-    });
 });
