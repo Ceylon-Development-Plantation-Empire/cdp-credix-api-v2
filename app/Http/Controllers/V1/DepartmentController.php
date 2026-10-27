@@ -9,13 +9,15 @@ use App\Http\Requests\CreateDepartmentRequest;
 use App\Http\Requests\UpdateDepartmentRequest;
 use App\Models\Department;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
+use App\Traits\HandlesApiErrors;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
 class DepartmentController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors;
 
     /**
      * Define the middleware for this controller.
@@ -37,7 +39,7 @@ class DepartmentController extends Controller implements HasMiddleware
     public function index(Request $request)
     {
         try {
-            $perPage = $request->get('per_page', 15);
+            $perPage = max(1, min((int) $request->get('per_page', 15), 100));
             $query = Department::with('head');
 
             // Apply Search Scope if search parameter is present
@@ -158,32 +160,7 @@ class DepartmentController extends Controller implements HasMiddleware
      */
     public function destroy(string $id)
     {
-        try {
-            $department = Department::find($id);
-
-            if (! $department) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Department not found',
-                ], 404);
-            }
-
-            $departmentName = $department->name;
-            $department->delete();
-
-            $this->logActivity('DELETE', 'Department', "Deleted department: {$departmentName}");
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Department deleted successfully',
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to delete department',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
-        }
+        return $this->destroyRecord(Department::find($id), 'department', 'Department');
     }
 
     /**

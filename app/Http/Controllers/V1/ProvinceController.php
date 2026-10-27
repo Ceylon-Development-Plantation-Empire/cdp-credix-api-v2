@@ -9,13 +9,15 @@ use App\Http\Requests\CreateProvinceRequest;
 use App\Http\Requests\UpdateProvinceRequest;
 use App\Models\Province;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
+use App\Traits\HandlesApiErrors;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
 class ProvinceController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors;
 
     /**
      * Define the middleware for this controller.
@@ -162,32 +164,7 @@ class ProvinceController extends Controller implements HasMiddleware
      */
     public function destroy(string $id)
     {
-        try {
-            $province = Province::find($id);
-
-            if (! $province) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Province not found',
-                ], 404);
-            }
-
-            $provinceName = $province->name;
-            $province->delete();
-
-            $this->logActivity('DELETE', 'Province', "Deleted province: {$provinceName}");
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Province deleted successfully',
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to delete province',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
-        }
+        return $this->destroyRecord(Province::find($id), 'province', 'Province');
     }
 
     /**

@@ -9,13 +9,15 @@ use App\Http\Requests\CreateCountryRequest;
 use App\Http\Requests\UpdateCountryRequest;
 use App\Models\Country;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
+use App\Traits\HandlesApiErrors;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
 class CountryController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors;
 
     /**
      * Define the middleware for this controller.
@@ -37,7 +39,7 @@ class CountryController extends Controller implements HasMiddleware
     public function index(Request $request)
     {
         try {
-            $perPage = $request->get('per_page', 15);
+            $perPage = max(1, min((int) $request->get('per_page', 15), 100));
             $query = Country::query();
 
             // Apply Search Scope if search parameter is present
@@ -154,32 +156,7 @@ class CountryController extends Controller implements HasMiddleware
      */
     public function destroy(string $id)
     {
-        try {
-            $country = Country::find($id);
-
-            if (! $country) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Country not found',
-                ], 404);
-            }
-
-            $countryName = $country->name;
-            $country->delete();
-
-            $this->logActivity('DELETE', 'Country', "Deleted country: {$countryName}");
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Country deleted successfully',
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to delete country',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
-        }
+        return $this->destroyRecord(Country::find($id), 'country', 'Country');
     }
 
     /**

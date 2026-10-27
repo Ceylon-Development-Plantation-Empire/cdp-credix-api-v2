@@ -9,13 +9,15 @@ use App\Http\Requests\CreateDesignationRequest;
 use App\Http\Requests\UpdateDesignationRequest;
 use App\Models\Designation;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
+use App\Traits\HandlesApiErrors;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
 class DesignationController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors;
 
     /**
      * Define the middleware for this controller.
@@ -170,32 +172,7 @@ class DesignationController extends Controller implements HasMiddleware
      */
     public function destroy(string $id)
     {
-        try {
-            $designation = Designation::find($id);
-
-            if (! $designation) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Designation not found',
-                ], 404);
-            }
-
-            $designationName = $designation->name;
-            $designation->delete();
-
-            $this->logActivity('DELETE', 'Designation', "Deleted designation: {$designationName}");
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Designation deleted successfully',
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to delete designation',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
-        }
+        return $this->destroyRecord(Designation::find($id), 'designation', 'Designation');
     }
 
     /**

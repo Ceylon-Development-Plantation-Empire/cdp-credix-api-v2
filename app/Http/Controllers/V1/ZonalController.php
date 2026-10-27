@@ -9,13 +9,15 @@ use App\Http\Requests\CreateZonalRequest;
 use App\Http\Requests\UpdateZonalRequest;
 use App\Models\Zonal;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
+use App\Traits\HandlesApiErrors;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
 class ZonalController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors;
 
     /**
      * Define the middleware for this controller.
@@ -162,33 +164,7 @@ class ZonalController extends Controller implements HasMiddleware
      */
     public function destroy(string $id)
     {
-        try {
-            $zonal = Zonal::find($id);
-
-            if (! $zonal) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Zonal not found',
-                ], 404);
-            }
-
-            $zonalName = $zonal->name;
-
-            $zonal->delete();
-
-            $this->logActivity('DELETE', 'Zonal', "Deleted zonal: {$zonalName}");
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Zonal deleted successfully',
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to delete zonal',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
-        }
+        return $this->destroyRecord(Zonal::find($id), 'zonal', 'Zonal');
     }
 
     /**
