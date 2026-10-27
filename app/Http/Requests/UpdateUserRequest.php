@@ -8,6 +8,7 @@ use App\Http\Requests\Concerns\FormatsValidationErrors;
 use App\Models\User;
 use App\Rules\UniqueEmployeeIdNumber;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
@@ -59,5 +60,32 @@ class UpdateUserRequest extends FormRequest
             'is_active' => ['sometimes', 'boolean'],
             'can_login' => ['sometimes', 'boolean'],
         ];
+    }
+
+    /**
+     * A staff user without an employee record (an admin being turned into staff) needs the employee
+     * details to get one; without them the update would fail inside the database.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            $user = User::query()->find((int) $this->route('user'));
+
+            if (! $user || $user->employee_id !== null) {
+                return;
+            }
+
+            $current = $user->user_type instanceof \BackedEnum ? $user->user_type->value : (string) $user->user_type;
+
+            if ($this->input('user_type', $current) !== 'staff') {
+                return;
+            }
+
+            foreach (['employee_code', 'id_number', 'designation_id'] as $field) {
+                if (! $this->filled($field)) {
+                    $validator->errors()->add($field, "The {$field} field is required: this user has no employee record yet.");
+                }
+            }
+        });
     }
 }
