@@ -99,7 +99,7 @@ class ChargeTypeController extends Controller implements HasMiddleware
         return $this->destroyRecord(ChargeType::query()->where('code', $code)->first(), 'charge type', 'ChargeType', fn (ChargeType $type) => match (true) {
             (bool) $type->is_system => 'A system charge type cannot be deleted.',
             $type->productCharges()->exists() => 'Products use this charge type. Deactivate it instead.',
-            default => null,
+            default => 'Charge types are deactivated, never deleted. Switch it off with PUT /charge-types/{code}.',
         });
     }
 }
