@@ -60,7 +60,7 @@ class TemplateController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Templates retrieved successfully',
-                'data' => $this->paginated($query->paginate($this->perPage($request)), TemplateResource::class),
+                'data' => $this->paginated($this->page($query, $request), TemplateResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve templates', $th);
@@ -189,7 +189,7 @@ class TemplateController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Notification log retrieved successfully',
-                'data' => $this->paginated($query->paginate($this->perPage($request)), NotificationLogResource::class),
+                'data' => $this->paginated($this->page($query, $request), NotificationLogResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve notification log', $th);

@@ -33,6 +33,24 @@ trait PaginatesResources
     }
 
     /**
+     * Run a list query: one page by default, or with ?print=1 the whole filtered list in a single page.
+     *
+     * Print returns at most 1000 rows so a list can never pull the entire table.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder  $query
+     */
+    protected function page($query, Request $request): LengthAwarePaginator
+    {
+        if (! $request->boolean('print')) {
+            return $query->paginate($this->perPage($request));
+        }
+
+        $rows = $query->limit(1000)->get();
+
+        return new LengthAwarePaginator($rows, $rows->count(), max(1, $rows->count()), 1);
+    }
+
+    /**
      * Page size from the request, never more than 100 rows at once.
      */
     protected function perPage(Request $request): int

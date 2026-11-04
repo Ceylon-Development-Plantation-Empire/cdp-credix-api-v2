@@ -183,13 +183,17 @@ class Customer extends Model
             return $query;
         }
 
+        $cleanedSearch = strtoupper((string) preg_replace('/[\s-]+/', '', $search));
         $normalizedIds = array_filter(array_map(fn (IdType $type) => $type->normalize($search), IdType::cases()));
+        if ($cleanedSearch !== '' && !in_array($cleanedSearch, $normalizedIds, true)) {
+            $normalizedIds[] = $cleanedSearch;
+        }
         // Phones are stored as +94XXXXXXXXX, so drop a leading 0 the user may type.
         $phoneDigits = ltrim(preg_replace('/\D+/', '', $search), '0');
 
         return $query->where(function (Builder $q) use ($search, $normalizedIds, $phoneDigits) {
             $q->where('full_name', 'like', "%{$search}%")
-                ->orWhere('customer_no', $search);
+                ->orWhere('customer_no', 'like', "%{$search}%");
 
             // Only search phones on a meaningful number of digits; a name has none and must not match everyone.
             if (strlen($phoneDigits) >= 4) {

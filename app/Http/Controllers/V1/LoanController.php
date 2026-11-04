@@ -79,7 +79,16 @@ class LoanController extends Controller implements HasMiddleware
                 $query->search($request->search);
             }
 
-            foreach (['status', 'borrower_type', 'branch_id'] as $filter) {
+            if ($request->filled('status')) {
+                $statuses = array_filter(array_map('trim', explode(',', (string) $request->get('status'))));
+                if (count($statuses) > 1) {
+                    $query->whereIn('status', $statuses);
+                } elseif (count($statuses) === 1) {
+                    $query->where('status', reset($statuses));
+                }
+            }
+
+            foreach (['borrower_type', 'branch_id'] as $filter) {
                 if ($request->filled($filter)) {
                     $query->where($filter, $request->get($filter));
                 }
@@ -118,7 +127,7 @@ class LoanController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Loans retrieved successfully',
-                'data' => $this->paginated($query->paginate($this->perPage($request)), LoanListResource::class),
+                'data' => $this->paginated($this->page($query, $request), LoanListResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve loans', $th);
@@ -277,7 +286,7 @@ class LoanController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Loan notes retrieved successfully',
-                'data' => $this->paginated($query->paginate($this->perPage($request)), LoanActivityResource::class),
+                'data' => $this->paginated($this->page($query, $request), LoanActivityResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve loan notes', $th);
@@ -405,7 +414,7 @@ class LoanController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Loan activities retrieved successfully',
-                'data' => $this->paginated($query->paginate($this->perPage($request)), LoanActivityResource::class),
+                'data' => $this->paginated($this->page($query, $request), LoanActivityResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve loan activities', $th);

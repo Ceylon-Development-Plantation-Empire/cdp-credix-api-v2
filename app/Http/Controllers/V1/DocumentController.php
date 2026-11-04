@@ -96,7 +96,7 @@ class DocumentController extends Controller implements HasMiddleware
                 ])
                 ->latest('id');
 
-            $page = $query->paginate($this->perPage($request));
+            $page = $this->page($query, $request);
 
             // A customer's document belongs to every loan in scope that person is a party to.
             $customerLoans = LoanParty::query()

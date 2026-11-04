@@ -59,7 +59,7 @@ class GuarantorController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Guarantors retrieved successfully',
-                'data' => $this->paginated($query->paginate($this->perPage($request)), GuarantorListResource::class),
+                'data' => $this->paginated($this->page($query, $request), GuarantorListResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve guarantors', $th);

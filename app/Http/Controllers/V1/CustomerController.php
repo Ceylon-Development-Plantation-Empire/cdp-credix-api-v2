@@ -88,7 +88,7 @@ class CustomerController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Customers retrieved successfully',
-                'data' => $this->paginated($query->paginate($this->perPage($request)), CustomerListResource::class),
+                'data' => $this->paginated($this->page($query, $request), CustomerListResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve customers', $th);

@@ -73,7 +73,7 @@ class GlJournalController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Journals retrieved successfully',
-                'data' => $this->paginated($query->paginate($this->perPage($request)), GlJournalResource::class),
+                'data' => $this->paginated($this->page($query, $request), GlJournalResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve journals', $th);

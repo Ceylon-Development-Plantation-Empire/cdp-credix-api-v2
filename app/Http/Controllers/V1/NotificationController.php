@@ -33,7 +33,7 @@ class NotificationController extends Controller implements HasMiddleware
     {
         try {
             $user = auth()->user();
-            $perPage = (int) $request->get('per_page', 15);
+            $perPage = max(1, min((int) $request->get('per_page', 15), 100));
 
             $query = $request->boolean('unread_only')
                 ? $user->unreadNotifications()

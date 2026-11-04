@@ -61,7 +61,7 @@ class ProductCategoryController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Product categories retrieved successfully',
-                'data' => $this->paginated($query->paginate($this->perPage($request)), ProductCategoryResource::class),
+                'data' => $this->paginated($this->page($query, $request), ProductCategoryResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve product categories', $th);

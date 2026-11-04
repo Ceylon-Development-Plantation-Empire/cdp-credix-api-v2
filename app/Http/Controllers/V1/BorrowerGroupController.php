@@ -62,7 +62,7 @@ class BorrowerGroupController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Borrower groups retrieved successfully',
-                'data' => $this->paginated($query->paginate($this->perPage($request)), BorrowerGroupResource::class),
+                'data' => $this->paginated($this->page($query, $request), BorrowerGroupResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve borrower groups', $th);

@@ -64,7 +64,7 @@ class LegalTemplateController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Legal templates retrieved successfully',
-                'data' => $this->paginated($query->paginate($this->perPage($request)), LegalTemplateResource::class),
+                'data' => $this->paginated($this->page($query, $request), LegalTemplateResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve legal templates', $th);

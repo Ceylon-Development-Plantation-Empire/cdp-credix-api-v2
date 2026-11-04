@@ -45,7 +45,7 @@ class EmployeeController extends Controller implements HasMiddleware
                 ->when($request->has('is_active'), fn (Builder $q) => $q->where('is_active', $request->boolean('is_active')))
                 ->orderBy('full_name');
 
-            $page = $query->paginate($this->perPage($request));
+            $page = $this->page($query, $request);
 
             return response()->json([
                 'status' => 'success',

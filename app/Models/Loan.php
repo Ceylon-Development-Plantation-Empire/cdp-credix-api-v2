@@ -186,9 +186,11 @@ class Loan extends Model
             return $query;
         }
 
-        return $query->where(function (Builder $q) use ($search) {
-            $q->where('application_no', $search)
-                ->orWhere('loan_no', $search)
+        $term = "%{$search}%";
+
+        return $query->where(function (Builder $q) use ($search, $term) {
+            $q->where('application_no', 'like', $term)
+                ->orWhere('loan_no', 'like', $term)
                 ->orWhereHas('customer', fn (Builder $c) => $c->search($search))
                 ->orWhereHas('borrowerGroup', fn (Builder $g) => $g->search($search));
         });

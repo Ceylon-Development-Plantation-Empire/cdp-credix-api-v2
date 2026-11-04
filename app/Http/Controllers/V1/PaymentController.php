@@ -72,7 +72,7 @@ class PaymentController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Payments retrieved successfully',
-                'data' => $this->paginated($query->paginate($this->perPage($request)), LoanTransactionResource::class),
+                'data' => $this->paginated($this->page($query, $request), LoanTransactionResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve payments', $th);

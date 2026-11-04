@@ -67,7 +67,7 @@ class LegalDocumentController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Legal documents retrieved successfully',
-                'data' => $this->paginated($query->paginate($this->perPage($request)), LegalDocumentResource::class),
+                'data' => $this->paginated($this->page($query, $request), LegalDocumentResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve legal documents', $th);
@@ -97,7 +97,7 @@ class LegalDocumentController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Loans retrieved successfully',
-                'data' => $this->paginated($query->paginate($this->perPage($request)), LoanListResource::class),
+                'data' => $this->paginated($this->page($query, $request), LoanListResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve loans for legal documents', $th);

@@ -64,7 +64,7 @@ class CustomerFinancialController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Customer financials retrieved successfully',
-                'data' => $this->paginated($query->paginate($this->perPage($request)), CustomerFinancialListResource::class),
+                'data' => $this->paginated($this->page($query, $request), CustomerFinancialListResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve customer financials', $th);
