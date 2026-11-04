@@ -36,7 +36,7 @@ class AgencyCaseController extends Controller
             return response()->json([
                 'status' => 'success',
                 'message' => 'Assigned recovery cases retrieved successfully',
-                'data' => $this->paginated($this->cases($request)->latest('id')->paginate($this->perPage($request)), RecoveryCaseResource::class),
+                'data' => $this->paginated($this->page($this->cases($request)->latest('id'), $request), RecoveryCaseResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve recovery cases', $th);
@@ -90,7 +90,16 @@ class AgencyCaseController extends Controller
     protected function cases(Request $request): Builder
     {
         return RecoveryCase::withoutGlobalScope('branch')
-            ->with(['loan' => fn ($q) => $q->withoutGlobalScope('branch')->with(['customer' => fn ($c) => $c->withoutGlobalScope('branch')])])
+            ->with([
+                'loan' => fn ($q) => $q->withoutGlobalScope('branch')->with([
+                    'customer' => fn ($c) => $c->withoutGlobalScope('branch'),
+                    'product',
+                    'guarantors.customer' => fn ($gc) => $gc->withoutGlobalScope('branch'),
+                    'collaterals',
+                ]),
+                'branch',
+                'agent',
+            ])
             ->where('assigned_user_id', $request->user()->id)
             ->open();
     }

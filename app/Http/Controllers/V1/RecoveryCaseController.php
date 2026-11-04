@@ -51,7 +51,14 @@ class RecoveryCaseController extends Controller implements HasMiddleware
     public function index(Request $request)
     {
         try {
-            $query = RecoveryCase::with(['loan.customer', 'branch', 'agent'])->latest('id');
+            $query = RecoveryCase::with([
+                'loan.customer',
+                'loan.product',
+                'loan.guarantors.customer',
+                'loan.collaterals',
+                'branch',
+                'agent',
+            ])->latest('id');
 
             foreach (['stage', 'status', 'branch_id'] as $filter) {
                 if ($request->filled($filter)) {
@@ -70,7 +77,7 @@ class RecoveryCaseController extends Controller implements HasMiddleware
             return response()->json([
                 'status' => 'success',
                 'message' => 'Recovery cases retrieved successfully',
-                'data' => $this->paginated($query->paginate($this->perPage($request)), RecoveryCaseResource::class),
+                'data' => $this->paginated($this->page($query, $request), RecoveryCaseResource::class),
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to retrieve recovery cases', $th);
@@ -80,7 +87,14 @@ class RecoveryCaseController extends Controller implements HasMiddleware
     public function show(string $publicId)
     {
         try {
-            $case = RecoveryCase::with(['loan.customer', 'branch', 'agent'])->where('public_id', $publicId)->first();
+            $case = RecoveryCase::with([
+                'loan.customer',
+                'loan.product',
+                'loan.guarantors.customer',
+                'loan.collaterals',
+                'branch',
+                'agent',
+            ])->where('public_id', $publicId)->first();
 
             if (! $case) {
                 return $this->notFound('Recovery case not found');
