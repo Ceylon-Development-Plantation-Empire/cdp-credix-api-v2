@@ -40,7 +40,32 @@ abstract class OrgUnit extends Model
     protected static function booted(): void
     {
         static::addGlobalScope('unit_type', fn (Builder $query) => $query->where('org_units.unit_type', static::unitType()->value));
-        static::creating(fn (OrgUnit $unit) => $unit->unit_type = static::unitType()->value);
+        static::creating(function (OrgUnit $unit) {
+            $unit->unit_type = static::unitType()->value;
+            if (empty($unit->code)) {
+                $unit->code = static::nextCode();
+            }
+        });
+    }
+
+    public static function nextCode(): string
+    {
+        $prefix = match (static::unitType()) {
+            OrgUnitType::Group => 'OG',
+            OrgUnitType::Region => 'REG',
+            OrgUnitType::Zone => 'ZON',
+            OrgUnitType::Province => 'PRV',
+            OrgUnitType::Country => 'CTY',
+            default => 'OU',
+        };
+
+        $maxId = (int) (static::withoutGlobalScopes()->where('unit_type', static::unitType()->value)->max('id') ?? 0) + 1;
+        do {
+            $code = $prefix . '-' . str_pad((string) $maxId, 2, '0', STR_PAD_LEFT);
+            $maxId++;
+        } while (static::withoutGlobalScopes()->where('unit_type', static::unitType()->value)->where('code', $code)->exists());
+
+        return $code;
     }
 
     public function getAttribute($key)

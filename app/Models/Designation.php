@@ -28,6 +28,17 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class Designation extends Model
 {
+    public static function nextCode(): string
+    {
+        $maxId = (int) (static::max('id') ?? 0) + 1;
+        do {
+            $code = 'DES-' . str_pad((string) $maxId, 3, '0', STR_PAD_LEFT);
+            $maxId++;
+        } while (static::where('code', $code)->exists());
+
+        return $code;
+    }
+
     use Audited;
     use HasFactory;
 
@@ -70,6 +81,12 @@ class Designation extends Model
      */
     protected static function booted(): void
     {
+        static::creating(function (Designation $desig) {
+            if (empty($desig->code)) {
+                $desig->code = static::nextCode();
+            }
+        });
+
         static::saving(function (Designation $designation) {
             if (empty($designation->order_weight) && $designation->level_id !== null) {
                 $weight = Lookup::query()->whereKey($designation->level_id)->first()?->meta['weight'] ?? null;

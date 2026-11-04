@@ -38,7 +38,7 @@ class StoreLookupRequest extends FormRequest
 
         return ($collateral ? $this->collateralTypeMetaRules() : []) + [
             'type' => ['required', Rule::enum(LookupType::class)],
-            'code' => ['required', 'string', 'max:60', 'regex:/^[A-Za-z0-9_.\-]+$/', Rule::unique('lookups', 'code')->where('type', $this->input('type'))],
+            'code' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9_.\-]+$/', Rule::unique('lookups', 'code')->where('type', $this->input('type'))],
             'label' => ['required', 'string', 'max:150'],
             'description' => ['nullable', 'string', 'max:500'],
             'meta' => ['nullable', 'array'],

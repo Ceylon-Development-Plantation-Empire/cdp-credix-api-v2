@@ -13,6 +13,26 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Department extends Model
 {
+    protected static function booted(): void
+    {
+        static::creating(function (Department $dept) {
+            if (empty($dept->code)) {
+                $dept->code = static::nextCode();
+            }
+        });
+    }
+
+    public static function nextCode(): string
+    {
+        $maxId = (int) (static::max('id') ?? 0) + 1;
+        do {
+            $code = 'DEP-' . str_pad((string) $maxId, 3, '0', STR_PAD_LEFT);
+            $maxId++;
+        } while (static::where('code', $code)->exists());
+
+        return $code;
+    }
+
     use Audited;
     use HasFactory;
 

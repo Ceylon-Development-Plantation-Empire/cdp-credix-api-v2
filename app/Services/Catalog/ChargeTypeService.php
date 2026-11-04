@@ -28,6 +28,9 @@ class ChargeTypeService
      */
     public function create(array $data, User $by): ChargeType
     {
+        if (empty($data['code']) && !empty($data['name'])) {
+            $data['code'] = \Illuminate\Support\Str::slug($data['name'], '_');
+        }
         $type = ChargeType::create($data + [
             'behaviour' => ChargeBehaviour::Upfront,
             'is_active' => true,

@@ -27,6 +27,9 @@ class LookupService
      */
     public function create(array $data, User $by): Lookup
     {
+        if (empty($data['code']) && !empty($data['label'])) {
+            $data['code'] = \Illuminate\Support\Str::slug($data['label'], '_');
+        }
         if (($data['type'] ?? null) === LookupType::CollateralType->value) {
             $data['meta'] = $this->collateralMeta($data['meta'] ?? []);
         }

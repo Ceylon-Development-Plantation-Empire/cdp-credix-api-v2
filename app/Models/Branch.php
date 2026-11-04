@@ -28,6 +28,26 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class Branch extends Model
 {
+    protected static function booted(): void
+    {
+        static::creating(function (Branch $branch) {
+            if (empty($branch->code)) {
+                $branch->code = static::nextCode();
+            }
+        });
+    }
+
+    public static function nextCode(): string
+    {
+        $maxId = (int) (static::max('id') ?? 0) + 1;
+        do {
+            $code = 'BR-' . str_pad((string) $maxId, 3, '0', STR_PAD_LEFT);
+            $maxId++;
+        } while (static::where('code', $code)->exists());
+
+        return $code;
+    }
+
     use Audited;
     use HasFactory;
 

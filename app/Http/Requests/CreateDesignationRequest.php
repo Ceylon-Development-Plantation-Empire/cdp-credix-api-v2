@@ -30,7 +30,7 @@ class CreateDesignationRequest extends FormRequest
     {
         return [
             'name' => 'required|string|max:255',
-            'code' => 'required|string|unique:designations,code|max:10',
+            'code' => 'nullable|string|unique:designations,code|max:10',
             'department_id' => 'required|exists:departments,id',
             'level' => ['required', 'string', new LookupCode(LookupType::DesignationLevel)],
             'description' => 'nullable|string',

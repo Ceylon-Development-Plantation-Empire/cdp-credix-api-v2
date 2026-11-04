@@ -21,7 +21,7 @@ class CreateBranchRequest extends FormRequest
     {
         return [
             'name' => 'required|string|max:255',
-            'code' => 'required|string|unique:branches,code|max:20',
+            'code' => 'nullable|string|unique:branches,code|max:20',
             'group_id' => 'nullable|exists:org_units,id,unit_type,group',
             'address_line1' => 'required|string|max:255',
             'address_line2' => 'nullable|string|max:255',

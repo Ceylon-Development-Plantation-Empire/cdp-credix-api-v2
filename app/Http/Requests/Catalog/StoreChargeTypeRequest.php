@@ -38,7 +38,7 @@ class StoreChargeTypeRequest extends FormRequest
         $behaviour = ChargeBehaviour::Upfront;
 
         return [
-            'code' => ['required', 'string', 'max:40', 'regex:/^[a-z0-9_]+$/', Rule::unique('charge_types', 'code')],
+            'code' => ['nullable', 'string', 'max:40', 'regex:/^[a-z0-9_]+$/', Rule::unique('charge_types', 'code')],
             'name' => ['required', 'string', 'max:100'],
             'display_group' => ['required', 'string', 'max:100'],
             'behaviour' => ['sometimes', Rule::in([$behaviour->value])],

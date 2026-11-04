@@ -28,7 +28,7 @@ class CreateCountryRequest extends FormRequest
     {
         return [
             'name' => 'required|string|max:255',
-            'code' => 'required|string|unique:org_units,code,NULL,id,unit_type,country|max:10',
+            'code' => 'nullable|string|unique:org_units,code,NULL,id,unit_type,country|max:10',
             'description' => 'nullable|string|max:1000',
             'is_active' => 'sometimes|boolean',
         ];

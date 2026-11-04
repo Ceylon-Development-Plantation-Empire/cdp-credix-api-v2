@@ -22,7 +22,7 @@ class CreateDepartmentRequest extends FormRequest
     {
         return [
             'name' => 'required|string|max:255',
-            'code' => 'required|string|unique:departments,code|max:50',
+            'code' => 'nullable|string|unique:departments,code|max:50',
             'description' => 'nullable|string',
             'is_active' => 'sometimes|boolean',
             'head_id' => 'nullable|exists:employees,id|unique:departments,head_id',

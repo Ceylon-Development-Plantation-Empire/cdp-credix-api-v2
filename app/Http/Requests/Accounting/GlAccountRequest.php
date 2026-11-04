@@ -28,7 +28,7 @@ class GlAccountRequest extends FormRequest
         $required = $creating ? 'required' : 'sometimes';
 
         return [
-            'code' => [$required, 'bail', 'string', 'max:20', 'regex:/^[A-Za-z0-9.\-]+$/', Rule::unique('gl_accounts', 'code')->ignore($this->route('id'))],
+            'code' => ['nullable', 'bail', 'string', 'max:20', 'regex:/^[A-Za-z0-9.\-]+$/', Rule::unique('gl_accounts', 'code')->ignore($this->route('id'))],
             'name' => [$required, 'string', 'min:3', 'max:120'],
             'type' => [$required, Rule::enum(GlAccountType::class)],
             'description' => ['nullable', 'string', 'max:255'],
