@@ -34,6 +34,37 @@ class RecoveryCaseResource extends JsonResource
         );
         $fullContact = $isAssignedAgent || $canManageRecovery;
 
+        $guarantors = [];
+        if ($loan && $loan->relationLoaded('guarantors')) {
+            foreach ($loan->guarantors as $g) {
+                $c = $g->relationLoaded('customer') ? $g->customer : null;
+                $guarantors[] = [
+                    'id' => $g->id,
+                    'relationship' => $g->relationship_id ? (string) ($g->relationship ?? '') : null,
+                    'name' => $c?->full_name ?? '—',
+                    'id_number' => $c ? ($fullContact ? (string) $c->id_number : '—') : '—',
+                    'phone' => $c ? ($fullContact ? (string) $c->phone_primary : PhoneNormalizer::mask($c->phone_primary)) : '—',
+                    'secondary_phone' => ($fullContact && $c) ? (string) $c->phone_secondary : null,
+                    'address' => ($fullContact && $c) ? trim("{$c->address_line_1}, {$c->city}") : ($c?->city ?? '—'),
+                    'workplace' => ($fullContact && $c) ? ($c->employer_name ?? $c->business_name) : null,
+                ];
+            }
+        }
+
+        $collaterals = [];
+        if ($loan && $loan->relationLoaded('collaterals')) {
+            foreach ($loan->collaterals as $col) {
+                $collaterals[] = [
+                    'id' => $col->public_id,
+                    'type' => $col->type,
+                    'description' => $col->description,
+                    'details' => $col->details,
+                    'market_value' => (string) $col->market_value,
+                    'forced_sale_value' => (string) $col->forced_sale_value,
+                ];
+            }
+        }
+
         return [
             'public_id' => $this->public_id,
             'case_no' => $this->case_no,
@@ -44,58 +75,36 @@ class RecoveryCaseResource extends JsonResource
                 'public_id' => $loan->public_id,
                 'loan_no' => $loan->loan_no,
                 'application_no' => $loan->application_no,
-                'product_name' => $loan->product?->name,
+                'product_name' => $loan->relationLoaded('product') ? $loan->product?->name : null,
                 'sanctioned_amount' => (string) ($loan->approved_amount ?? $loan->requested_amount ?? 0),
                 'installment_amount' => (string) ($loan->installment_amount ?? 0),
                 'days_past_due' => $loan->days_past_due,
                 'arrears_amount' => (string) $loan->arrears_amount,
                 'outstanding_principal' => (string) $loan->outstanding_principal,
-                'last_payment_date' => $loan->last_payment_date?->format('Y-m-d'),
-                'guarantors' => $loan->relationLoaded('guarantors') ? $loan->guarantors->map(function ($g) use ($fullContact) {
-                    $c = $g->customer;
-                    return [
-                        'id' => $g->id,
-                        'relationship' => $g->relationship,
-                        'name' => $c?->full_name ?? '—',
-                        'id_number' => $c ? ($fullContact ? $c->id_number : '—') : '—',
-                        'phone' => $c ? ($fullContact ? $c->phone_primary : PhoneNormalizer::mask($c->phone_primary)) : '—',
-                        'secondary_phone' => $fullContact ? $c?->phone_secondary : null,
-                        'address' => $c ? ($fullContact ? trim("{$c->address_line_1}, {$c->city}") : $c->city) : '—',
-                        'workplace' => $fullContact ? ($c?->employer_name ?? $c?->business_name) : null,
-                    ];
-                })->values()->all() : [],
-                'collaterals' => $loan->relationLoaded('collaterals') ? $loan->collaterals->map(function ($col) {
-                    return [
-                        'id' => $col->public_id,
-                        'type' => $col->type,
-                        'description' => $col->description,
-                        'details' => $col->details,
-                        'market_value' => (string) $col->market_value,
-                        'forced_sale_value' => (string) $col->forced_sale_value,
-                    ];
-                })->values()->all() : [],
+                'guarantors' => $guarantors,
+                'collaterals' => $collaterals,
             ] : null,
             'customer' => $customer ? [
                 'customer_no' => $customer->customer_no,
                 'full_name' => $customer->full_name,
                 'name_with_initials' => $customer->name_with_initials,
-                'id_number' => $fullContact ? $customer->id_number : ($customer->id_number ? substr($customer->id_number, 0, 4) . '****' : null),
-                'phone_primary' => $fullContact ? $customer->phone_primary : PhoneNormalizer::mask($customer->phone_primary),
-                'phone_secondary' => $fullContact ? $customer->phone_secondary : null,
-                'whatsapp_number' => $fullContact ? $customer->whatsapp_number : null,
-                'email' => $fullContact ? $customer->email : Mask::email($customer->email),
+                'id_number' => $fullContact ? (string) $customer->id_number : ($customer->id_number ? substr((string) $customer->id_number, 0, 4) . '****' : null),
+                'phone_primary' => $fullContact ? (string) $customer->phone_primary : PhoneNormalizer::mask($customer->phone_primary),
+                'phone_secondary' => $fullContact ? (string) $customer->phone_secondary : null,
+                'whatsapp_number' => $fullContact ? (string) $customer->whatsapp_number : null,
+                'email' => $fullContact ? (string) $customer->email : Mask::email($customer->email),
                 'address' => $fullContact
                     ? trim("{$customer->address_line_1}, " . ($customer->address_line_2 ? "{$customer->address_line_2}, " : '') . ($customer->landmark ? "Near {$customer->landmark}, " : '') . "{$customer->city}")
-                    : $customer->city,
-                'address_line_1' => $fullContact ? $customer->address_line_1 : null,
-                'address_line_2' => $fullContact ? $customer->address_line_2 : null,
-                'landmark' => $fullContact ? $customer->landmark : null,
-                'city' => $customer->city,
-                'district' => $customer->district,
-                'employer_name' => $fullContact ? $customer->employer_name : null,
-                'business_name' => $fullContact ? $customer->business_name : null,
-                'occupation' => $fullContact ? $customer->occupation : null,
-                'employment_status' => $fullContact ? ($customer->employment_status?->value ?? $customer->employment_status) : null,
+                    : (string) $customer->city,
+                'address_line_1' => $fullContact ? (string) $customer->address_line_1 : null,
+                'address_line_2' => $fullContact ? (string) $customer->address_line_2 : null,
+                'landmark' => $fullContact ? (string) $customer->landmark : null,
+                'city' => (string) $customer->city,
+                'district' => (string) $customer->district,
+                'employer_name' => $fullContact ? (string) $customer->employer_name : null,
+                'business_name' => $fullContact ? (string) $customer->business_name : null,
+                'occupation' => $fullContact ? (string) $customer->occupation : null,
+                'employment_status' => $fullContact ? (string) ($customer->employment_status?->value ?? $customer->employment_status ?? '') : null,
             ] : null,
             'branch' => $this->whenLoaded('branch', fn () => ['id' => $this->branch->id, 'name' => $this->branch->name]),
             'agent' => $this->whenLoaded('agent', fn () => $this->agent ? ['id' => $this->agent->id, 'name' => $this->agent->name] : null),
