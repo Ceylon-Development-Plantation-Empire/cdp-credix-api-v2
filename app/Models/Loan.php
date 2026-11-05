@@ -125,7 +125,6 @@ class Loan extends Model
             'assessed_monthly_income' => 'decimal:2',
             'assessed_monthly_expenses' => 'decimal:2',
             'existing_obligations' => 'decimal:2',
-            'dsr_percent' => 'decimal:2',
             'submitted_at' => 'datetime',
             'approved_at' => 'datetime',
             'accepted_at' => 'datetime',

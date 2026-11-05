@@ -50,7 +50,6 @@ class ProductResource extends JsonResource
             'guarantors' => ['min' => $this->min_guarantors, 'max' => $this->max_guarantors],
             'requires_collateral' => $this->requires_collateral,
             'grace_period_days' => $this->grace_period_days,
-            'max_dsr_percent' => $this->max_dsr_percent,
             'residual_value_percent' => $this->residual_value_percent,
             'early_settlement' => [
                 'allowed' => $this->early_settlement_allowed,

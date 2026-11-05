@@ -72,7 +72,7 @@ class LoanReviewService
             $borrowingLoans = $this->applications->borrowingLoans($loan);
             $amounts = $borrowingLoans->mapWithKeys(fn (Loan $each) => [$each->id => (string) $each->requested_amount])->all();
 
-            // The assessment (DSR on verified income) is written on these same loan objects and saved.
+            // The assessment (verified income and obligations) is written on these same loan objects and saved.
             $this->assertReady($loan, $borrowingLoans, $amounts, (string) $loan->rate);
 
             foreach ($borrowingLoans as $each) {
@@ -236,28 +236,9 @@ class LoanReviewService
 
         array_push($problems, ...$this->collateralProblems($loan, $terms, Money::sum($amounts)));
 
-        // Affordability, priced on the amounts and the term being decided.
-        if ($tenure !== null) {
-            foreach ($borrowingLoans as $each) {
-                $each->tenure = $tenure;
-            }
-        }
-
-        foreach ($borrowingLoans as $each) {
-            if (! isset($amounts[$each->id]) || ! $this->affordability->applies($each)) {
-                continue;
-            }
-
-            $this->affordability->assess($each, $this->pricing->price($each, $amounts[$each->id], $rate), verifiedIncomeOnly: true);
-
-            if (! $this->affordability->isAffordable($each, $terms)) {
-                $max = (string) $this->affordability->maxPercent($terms);
-                $problems[] = ['code' => 'DSR_TOO_HIGH', 'message' => $each->dsr_percent === null
-                    ? 'No verified income is recorded, so affordability cannot be shown.'
-                    : "The debt service ratio is {$each->dsr_percent}%, above the {$max}% allowed."];
-            }
-        }
-
+        // Affordability is evaluated discretionarily by the approving official
+        // based on the customer's loan security documents and income sources.
+        // Automated DSR hard blocking removed as per credit policy.
         return $problems;
     }
 

@@ -57,7 +57,6 @@ class LoanPricingService
             'max_guarantors' => $product->max_guarantors,
             'requires_collateral' => $product->requires_collateral,
             'grace_period_days' => $product->grace_period_days,
-            'max_dsr_percent' => $product->max_dsr_percent !== null ? (string) $product->max_dsr_percent : null,
             'residual_value_percent' => $product->residual_value_percent !== null ? (string) $product->residual_value_percent : null,
             'early_settlement_allowed' => $product->early_settlement_allowed,
             'early_settlement_rebate_percent' => $product->early_settlement_rebate_percent !== null ? (string) $product->early_settlement_rebate_percent : null,

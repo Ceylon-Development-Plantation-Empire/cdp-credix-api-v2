@@ -32,8 +32,6 @@ class SettingsSeeder extends Seeder
                 'Maximum age at maturity', 'Borrower age in years on the last due date.'],
             ['loan.offer_validity_days', 'loans', SettingType::Integer, '30', ['value' => 'required|integer|min:1|max:180'],
                 'Offer valid for (days)', 'An approved offer must be accepted by the borrowers (OTP) within this many days of approval.'],
-            ['affordability.max_dsr_percent', 'loans', SettingType::Decimal, '60', ['value' => 'required|numeric|min:1|max:100'],
-                'Maximum debt service ratio (%)', 'Used when the product does not set its own. (Existing obligations + new installment) / net income.'],
 
             /* Guarantors */
             ['guarantor.max_active_guarantees', 'guarantors', SettingType::Integer, '2', ['value' => 'required|integer|min:1|max:10'],

@@ -45,7 +45,6 @@ class LoanResource extends JsonResource
                 'monthly_income' => $this->assessed_monthly_income,
                 'monthly_expenses' => $this->assessed_monthly_expenses,
                 'existing_obligations' => $this->existing_obligations,
-                'dsr_percent' => $this->dsr_percent,
             ],
             // What the customer answered after approval: on hold (with the officer's note of why) or not.
             'offer' => [

@@ -54,7 +54,6 @@ trait ProductFieldRules
             'max_guarantors' => ['sometimes', 'integer', 'min:0', 'max:10'],
             'requires_collateral' => ['sometimes', 'boolean'],
             'grace_period_days' => ['nullable', 'integer', 'min:0', 'max:90'],
-            'max_dsr_percent' => ['nullable', 'decimal:0,2', 'min:1', 'max:100'],
             'residual_value_percent' => ['nullable', 'decimal:0,2', 'min:0', 'max:99'],
             'early_settlement_allowed' => ['sometimes', 'boolean'],
             'early_settlement_rebate_percent' => ['nullable', 'decimal:0,2', 'min:0', 'max:100'],
