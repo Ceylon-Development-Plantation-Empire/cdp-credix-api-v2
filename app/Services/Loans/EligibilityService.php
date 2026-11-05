@@ -51,13 +51,32 @@ class EligibilityService
             $problems[] = $this->problem('BORROWER_TOO_OLD_AT_MATURITY', "The borrower would be older than {$maxAgeAtMaturity} when the loan ends. Choose a shorter tenure.");
         }
 
-        // A loan given as a special case (Loan Multiple Open Allow) is not stopped by the rule.
-        if (! $allowMultipleOpen && ($open = $this->openLoanOf($customer, $ignoreLoanIds))) {
-            $problems[] = $this->problem(
-                'BORROWER_HAS_OPEN_LOAN',
-                "The customer already has an open loan or application: {$open->application_no} ({$open->status->value}). Continue that one instead of starting another.",
-                ['loan' => ['public_id' => $open->public_id, 'application_no' => $open->application_no, 'loan_no' => $open->loan_no, 'status' => $open->status->value]],
-            );
+        // A customer authorized for multiple loans (Customer profile policy or Loan Multiple Open Allow override) is checked against their limit.
+        if (! $allowMultipleOpen) {
+            if ($customer->allow_multiple_loans) {
+                $openCount = Loan::withoutGlobalScope('branch')
+                    ->open()
+                    ->when($ignoreLoanIds !== [], fn ($q) => $q->whereNotIn('id', $ignoreLoanIds))
+                    ->whereHas('parties', fn ($p) => $p->where('customer_id', $customer->id)
+                        ->whereIn('role', PartyRole::borrowingValues())
+                        ->whereNull('released_at'))
+                    ->count();
+
+                $maxAllowed = max(1, (int) ($customer->max_open_loans ?? 1));
+                if ($openCount >= $maxAllowed) {
+                    $problems[] = $this->problem(
+                        'BORROWER_REACHED_MULTIPLE_LOAN_LIMIT',
+                        "The customer has reached their approved concurrent loan limit ({$openCount} of {$maxAllowed} open loans).",
+                        ['open_count' => $openCount, 'max_open_loans' => $maxAllowed],
+                    );
+                }
+            } elseif ($open = $this->openLoanOf($customer, $ignoreLoanIds)) {
+                $problems[] = $this->problem(
+                    'BORROWER_HAS_OPEN_LOAN',
+                    "The customer already has an open loan or application: {$open->application_no} ({$open->status->value}). Continue that one instead of starting another.",
+                    ['loan' => ['public_id' => $open->public_id, 'application_no' => $open->application_no, 'loan_no' => $open->loan_no, 'status' => $open->status->value]],
+                );
+            }
         }
 
         if ($this->isBlockedGuarantor($customer)) {

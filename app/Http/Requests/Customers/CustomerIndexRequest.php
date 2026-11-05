@@ -22,6 +22,15 @@ class CustomerIndexRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('allow_multiple_loans')) {
+            $this->merge([
+                'allow_multiple_loans' => $this->boolean('allow_multiple_loans'),
+            ]);
+        }
+    }
+
     /**
      * @return array<string, list<mixed>>
      */
@@ -30,6 +39,7 @@ class CustomerIndexRequest extends FormRequest
         return [
             'sort' => ['nullable', Rule::in(['newest', 'name', 'credit_score', '-credit_score'])],
             'search' => ['nullable', 'string', 'max:100'],
+            'allow_multiple_loans' => ['nullable', 'boolean'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'page' => ['nullable', 'integer', 'min:1'],
         ];

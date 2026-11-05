@@ -12,6 +12,7 @@ use App\Http\Requests\Customers\CustomerIndexRequest;
 use App\Http\Requests\Customers\CustomerLookupRequest;
 use App\Http\Requests\Customers\EligibilityRequest;
 use App\Http\Requests\Customers\UpdateCustomerRequest;
+use App\Http\Requests\Customers\UpdateMultipleLoansPolicyRequest;
 use App\Http\Resources\Customers\CustomerListResource;
 use App\Http\Resources\Customers\CustomerResource;
 use App\Models\Customer;
@@ -35,7 +36,7 @@ class CustomerController extends Controller implements HasMiddleware
 {
     use ActivityLogTrait, DeletesRecords, HandlesApiErrors, PaginatesResources;
 
-    protected const DETAIL_RELATIONS = ['branch', 'recommendedBy', 'currentGroupMembership.group'];
+    protected const DETAIL_RELATIONS = ['branch', 'recommendedBy', 'currentGroupMembership.group', 'multipleLoansApprovedBy'];
 
     public function __construct(
         protected CustomerService $customers,
@@ -49,6 +50,7 @@ class CustomerController extends Controller implements HasMiddleware
             new Middleware('permission:Customer Create', only: ['store']),
             new Middleware('permission:Customer Update', only: ['update']),
             new Middleware('permission:Customer Toggle Status', only: ['toggleStatus']),
+            new Middleware('permission:Loan Multiple Open Allow', only: ['updateMultipleLoansPolicy']),
         ];
     }
 
@@ -79,6 +81,11 @@ class CustomerController extends Controller implements HasMiddleware
 
             if ($request->filled('district')) {
                 $query->where('district', $request->district);
+            }
+
+            if ($request->has('allow_multiple_loans')) {
+                $query->where('allow_multiple_loans', $request->boolean('allow_multiple_loans'))
+                    ->with('multipleLoansApprovedBy');
             }
 
             if ($request->has('is_active')) {
@@ -144,7 +151,8 @@ class CustomerController extends Controller implements HasMiddleware
             }
 
             $product = Product::findBySlug($data['product_slug']);
-            $problems = $eligibility->borrowerProblems($customer, (int) ($data['tenure'] ?? $product->min_tenure), $product->repayment_frequency, true);
+            $allowMultipleOpen = (bool) ($request->boolean('allow_multiple_open') && $request->user()?->can('Loan Multiple Open Allow'));
+            $problems = $eligibility->borrowerProblems($customer, (int) ($data['tenure'] ?? $product->min_tenure), $product->repayment_frequency, true, [], $allowMultipleOpen);
 
             return response()->json([
                 'status' => 'success',
@@ -248,6 +256,46 @@ class CustomerController extends Controller implements HasMiddleware
             ], 200);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to update customer status', $th);
+        }
+    }
+
+    public function updateMultipleLoansPolicy(UpdateMultipleLoansPolicyRequest $request, string $publicId)
+    {
+        try {
+            $customer = Customer::where('public_id', $publicId)->first();
+
+            if (! $customer) {
+                return $this->notFound('Customer not found');
+            }
+
+            $validated = $request->validated();
+            $allow = (bool) $validated['allow_multiple_loans'];
+
+            $customer->update([
+                'allow_multiple_loans' => $allow,
+                'max_open_loans' => $allow ? (int) $validated['max_open_loans'] : 1,
+                'multiple_loans_reason' => $allow ? $validated['reason'] : null,
+                'multiple_loans_approved_by' => $allow ? $request->user()?->id : null,
+                'multiple_loans_approved_at' => $allow ? now() : null,
+                'updated_by' => $request->user()?->id,
+            ]);
+
+            $this->logActivity(
+                'UPDATE_MULTIPLE_LOANS_POLICY',
+                'Customer',
+                "Updated multiple loans policy for {$customer->customer_no}: ".($allow ? "Allowed (Max: {$validated['max_open_loans']})" : 'Disallowed'),
+                ['customer_id' => $customer->id, 'allow_multiple_loans' => $allow]
+            );
+
+            return response()->json([
+                'status' => 'success',
+                'message' => $allow
+                    ? 'Customer authorized to hold multiple open loans'
+                    : 'Multiple loans authorization removed for customer',
+                'data' => new CustomerResource($customer->load(self::DETAIL_RELATIONS)),
+            ], 200);
+        } catch (\Throwable $th) {
+            return $this->serverError('Failed to update multiple loans policy', $th);
         }
     }
 

@@ -87,6 +87,16 @@ class CustomerResource extends JsonResource
                 'id' => $this->recommendedBy->id,
                 'name' => $this->recommendedBy->full_name,
             ] : null),
+            'multiple_loans_policy' => [
+                'allowed' => (bool) $this->allow_multiple_loans,
+                'max_open_loans' => (int) ($this->max_open_loans ?? 1),
+                'reason' => $this->multiple_loans_reason,
+                'approved_by' => $this->whenLoaded('multipleLoansApprovedBy', fn () => $this->multipleLoansApprovedBy ? [
+                    'id' => $this->multipleLoansApprovedBy->id,
+                    'name' => $this->multipleLoansApprovedBy->name,
+                ] : null),
+                'approved_at' => $this->multiple_loans_approved_at?->toApiString(),
+            ],
             'credit_score' => $this->credit_score,
             // Additive (guide v2.1): custom fields defined by the business.
             'meta' => $this->meta ?? (object) [],

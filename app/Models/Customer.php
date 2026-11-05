@@ -95,6 +95,11 @@ class Customer extends Model
         'business_phone',
         'business_email',
         'recommended_by_employee_id',
+        'allow_multiple_loans',
+        'max_open_loans',
+        'multiple_loans_reason',
+        'multiple_loans_approved_by',
+        'multiple_loans_approved_at',
         // Custom fields defined as data (lookups custom_field.customer), validated by the request.
         'meta',
         'is_active',
@@ -127,6 +132,9 @@ class Customer extends Model
             'kyc_expires_at' => 'datetime',
             'is_active' => 'boolean',
             'credit_score' => 'integer',
+            'allow_multiple_loans' => 'boolean',
+            'max_open_loans' => 'integer',
+            'multiple_loans_approved_at' => 'datetime',
             'meta' => 'array',
         ];
     }
@@ -284,5 +292,30 @@ class Customer extends Model
     public function currentGroupMembership(): HasOne
     {
         return $this->hasOne(BorrowerGroupMember::class)->whereNull('left_on');
+    }
+
+    public function multipleLoansApprovedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'multiple_loans_approved_by');
+    }
+
+    public function openLoansCount(): int
+    {
+        return Loan::withoutGlobalScope('branch')
+            ->open()
+            ->whereHas('parties', fn ($p) => $p->where('customer_id', $this->id)
+                ->whereIn('role', PartyRole::borrowingValues())
+                ->whereNull('released_at'))
+            ->count();
+    }
+
+    public function canTakeAdditionalLoan(): bool
+    {
+        if (! $this->allow_multiple_loans) {
+            return false;
+        }
+
+        $limit = $this->max_open_loans ?? 1;
+        return $this->openLoansCount() < $limit;
     }
 }

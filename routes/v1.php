@@ -334,6 +334,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::put('{publicId}', [CustomerController::class, 'update']);
         Route::delete('{publicId}', [CustomerController::class, 'destroy']);
         Route::patch('{publicId}/toggle-status', [CustomerController::class, 'toggleStatus']);
+        Route::patch('{publicId}/multiple-loans-policy', [CustomerController::class, 'updateMultipleLoansPolicy']);
 
         // KYC by OTP – tight limits so codes cannot be sprayed or guessed
         Route::post('{publicId}/kyc/send-otp', [CustomerKycController::class, 'sendOtp'])->middleware('throttle:otp-send');

@@ -30,6 +30,7 @@ class EligibilityRequest extends FormRequest
         return [
             'product_slug' => ['required', 'string', Rule::exists('products', 'slug')->whereNull('deleted_at')],
             'tenure' => ['nullable', 'integer', 'min:1', 'max:600'],
+            'allow_multiple_open' => ['sometimes', 'boolean'],
         ];
     }
 }
