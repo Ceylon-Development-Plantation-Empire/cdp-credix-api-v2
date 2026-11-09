@@ -244,6 +244,7 @@ class PermissionsSeeder extends Seeder
             // application at a time (needs the flag special_approval and a written reason).
             ['name' => 'Loan Approve Special', 'group_name' => 'Loan Decision Permissions'],
             ['name' => 'Loan Reject', 'group_name' => 'Loan Decision Permissions'],
+            ['name' => 'Loan Reopen', 'group_name' => 'Loan Decision Permissions'],
 
             /* Loan operations */
             ['name' => 'Loan Offer Manage', 'group_name' => 'Loan Operations Permissions'],

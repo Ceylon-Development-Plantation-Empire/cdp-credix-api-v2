@@ -26,6 +26,7 @@ enum LoanStatus: string
     case Settled = 'settled';
     case Rejected = 'rejected';
     case Cancelled = 'cancelled';
+    case Reopened = 'reopened';
     case WrittenOff = 'written_off';
 
     /**
@@ -44,7 +45,11 @@ enum LoanStatus: string
             self::Approved => [self::Accepted, self::Returned, self::Cancelled],
             self::Accepted => [self::Active, self::Returned, self::Cancelled],
             self::Active => [self::Settled, self::WrittenOff],
-            self::Settled, self::Rejected, self::Cancelled, self::WrittenOff => [],
+            // Terminal states can be deliberately reopened by an authorized officer with audit justification
+            self::Rejected => [self::Reopened],
+            self::Cancelled => [self::Reopened],
+            self::Reopened => [self::InReview, self::Returned, self::Verified, self::Approved, self::Cancelled],
+            self::Settled, self::WrittenOff => [],
         };
     }
 
@@ -54,8 +59,8 @@ enum LoanStatus: string
     }
 
     /**
-     * Closed loans are final: rejected is never reopened (a new application is made instead),
-     * so the audit trail of the old one stays intact.
+     * Settled and written-off loans are final closed loans.
+     * Rejected and cancelled loans are closed until an authorized user reopens them.
      */
     public function isClosed(): bool
     {
@@ -68,7 +73,7 @@ enum LoanStatus: string
      */
     public function isEditable(): bool
     {
-        return in_array($this, [self::Draft, self::Submitted, self::InReview, self::Returned, self::Verified, self::Approved, self::Accepted, self::Active, self::Settled, self::WrittenOff], true);
+        return in_array($this, [self::Draft, self::Submitted, self::InReview, self::Returned, self::Reopened, self::Verified, self::Approved, self::Accepted, self::Active, self::Settled, self::WrittenOff], true);
     }
 
     /**
@@ -80,12 +85,12 @@ enum LoanStatus: string
     }
 
     /**
-     * Before submission (draft) and while returned for correction, nobody has decided on the figures yet, so they
+     * Before submission (draft) and while returned or reopened for correction, nobody has decided on the figures yet, so they
      * change freely. At any later stage a change to the money terms needs the application to be reviewed again.
      */
     public function changesNeedNoReview(): bool
     {
-        return in_array($this, [self::Draft, self::Returned], true);
+        return in_array($this, [self::Draft, self::Returned, self::Reopened], true);
     }
 
     /**

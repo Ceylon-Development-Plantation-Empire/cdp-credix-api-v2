@@ -181,6 +181,27 @@ class LoanReviewService
         }, attempts: 3);
     }
 
+    public function reopen(Loan $loan, string $remarks, User $by): Loan
+    {
+        return DB::transaction(function () use ($loan, $remarks, $by) {
+            $loan = $this->workflow->lock($loan);
+            $this->assertMove($loan, LoanStatus::Reopened);
+
+            $lastClosure = $loan->activities()
+                ->whereIn('to_status', [LoanStatus::Rejected->value, LoanStatus::Cancelled->value])
+                ->latest('id')
+                ->first();
+
+            $metadata = [
+                'reopened_from' => $loan->status->value,
+                'previous_reason' => $lastClosure?->remarks,
+                'previously_closed_at' => $loan->closed_at?->toDateTimeString(),
+            ];
+
+            return $this->workflow->transition($loan, LoanStatus::Reopened, $by, $remarks, $metadata);
+        }, attempts: 3);
+    }
+
     /**
      * Every problem that stops the loan from being verified or approved for these amounts.
      *

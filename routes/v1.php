@@ -408,6 +408,7 @@ Route::middleware(['auth:api', 'token.current', 'password.changed', 'user.type:a
         Route::post('{publicId}/approve', [LoanWorkflowController::class, 'approve']);
         Route::post('{publicId}/reject', [LoanWorkflowController::class, 'reject']);
         Route::post('{publicId}/cancel', [LoanWorkflowController::class, 'cancel']);
+        Route::post('{publicId}/reopen', [LoanWorkflowController::class, 'reopen']);
 
         Route::get('{publicId}/guarantors', [LoanPartyController::class, 'guarantors']);
         Route::post('{publicId}/guarantors', [LoanPartyController::class, 'addGuarantor']);

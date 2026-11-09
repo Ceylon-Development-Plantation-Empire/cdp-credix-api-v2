@@ -40,6 +40,7 @@ class LoanWorkflowController extends Controller implements HasMiddleware
             new Middleware('permission:Loan Approve', only: ['approve']),
             new Middleware('permission:Loan Reject', only: ['reject']),
             new Middleware('permission:Loan Cancel', only: ['cancel']),
+            new Middleware('permission:Loan Reopen', only: ['reopen']),
         ];
     }
 
@@ -85,6 +86,12 @@ class LoanWorkflowController extends Controller implements HasMiddleware
     {
         return $this->step($publicId, 'Loan cancelled', 'Failed to cancel loan',
             fn (Loan $loan) => $this->review->cancel($loan, $request->validated('remarks'), $request->user()));
+    }
+
+    public function reopen(LoanRemarksRequest $request, string $publicId)
+    {
+        return $this->step($publicId, 'Application reopened', 'Failed to reopen application',
+            fn (Loan $loan) => $this->review->reopen($loan, $request->validated('remarks'), $request->user()));
     }
 
     /**

@@ -88,7 +88,9 @@ class LoanWorkflowService
         // Delivered after commit: customers are told only about changes that were saved.
         LoanStatusChanged::dispatch($loan, $from, $to);
 
-        if ($to === $this->openFrom()) {
+        if ($to === LoanStatus::Reopened) {
+            $this->restoreSecurities($loans->pluck('id')->all());
+        } elseif ($to === $this->openFrom()) {
             $this->claimOpenLoanKeys($loans->pluck('id')->all());
         }
 
@@ -222,6 +224,9 @@ class LoanWorkflowService
                 LoanStatus::WrittenOff => ClosureReason::WrittenOff,
                 default => ClosureReason::Cancelled,
             };
+        } elseif ($from->isClosed()) {
+            $changes['closed_at'] = null;
+            $changes['closure_reason'] = null;
         }
 
         $loan->forceFill($changes)->save();
@@ -255,7 +260,7 @@ class LoanWorkflowService
         // A written-off loan keeps its borrowers' key until the debt is recovered (their parties are released then).
         $holding = $this->openFrom() === LoanStatus::Approved
             ? [LoanStatus::Approved, LoanStatus::Accepted, LoanStatus::Active, LoanStatus::WrittenOff]
-            : [LoanStatus::Submitted, LoanStatus::InReview, LoanStatus::Returned, LoanStatus::Verified, LoanStatus::Approved, LoanStatus::Accepted, LoanStatus::Active, LoanStatus::WrittenOff];
+            : [LoanStatus::Submitted, LoanStatus::InReview, LoanStatus::Returned, LoanStatus::Reopened, LoanStatus::Verified, LoanStatus::Approved, LoanStatus::Accepted, LoanStatus::Active, LoanStatus::WrittenOff];
 
         $ids = collect($loans)->filter(fn (Loan $loan) => in_array($loan->status, $holding, true))->pluck('id')->all();
 
@@ -347,6 +352,26 @@ class LoanWorkflowService
                 'open_case_key' => null,
                 'closed_at' => now(),
                 'outcome' => 'Loan closed',
+                'updated_at' => now(),
+            ]);
+    }
+
+    protected function restoreSecurities(array $loanIds): void
+    {
+        LoanParty::whereIn('loan_id', $loanIds)->whereNotNull('released_at')->update([
+            'released_at' => null,
+            'updated_at' => now(),
+        ]);
+
+        $this->claimOpenLoanKeys($loanIds);
+
+        DB::table('collaterals')
+            ->whereIn('loan_id', $loanIds)
+            ->where('status', CollateralStatus::Released->value)
+            ->update([
+                'status' => CollateralStatus::Proposed->value,
+                'released_by' => null,
+                'released_at' => null,
                 'updated_at' => now(),
             ]);
     }
