@@ -21,6 +21,8 @@ class DashboardOverviewRequest extends SnapshotReportRequest
             'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from', 'before_or_equal:'.BusinessDate::today()->toDateString()],
+            'months' => ['nullable', 'integer', 'in:3,6,12'],
+            'loan_no' => ['nullable', 'string', 'max:50'],
         ];
     }
 }

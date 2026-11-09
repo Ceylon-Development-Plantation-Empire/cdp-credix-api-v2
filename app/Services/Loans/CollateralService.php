@@ -40,7 +40,7 @@ class CollateralService
      */
     protected const FILLABLE = ['type', 'owner_customer_id', 'description', 'details', 'market_value', 'forced_sale_value', 'valued_on', 'valued_by'];
 
-    protected const CHANGE_WINDOW = [LoanStatus::Draft, LoanStatus::Submitted, LoanStatus::InReview, LoanStatus::Returned];
+    protected const CHANGE_WINDOW = [LoanStatus::Draft, LoanStatus::Submitted, LoanStatus::InReview, LoanStatus::Returned, LoanStatus::Reopened];
 
     public function __construct(
         protected LoanWorkflowService $workflow,

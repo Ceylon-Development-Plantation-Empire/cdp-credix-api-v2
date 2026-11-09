@@ -55,6 +55,8 @@ class DashboardService
         $today = BusinessDate::todayImmutable();
         $from = CarbonImmutable::parse($filters['from'] ?? $today->startOfMonth()->toDateString());
         $to = CarbonImmutable::parse($filters['to'] ?? $today->toDateString());
+        $months = isset($filters['months']) ? (int) $filters['months'] : 6;
+        $loanNo = $filters['loan_no'] ?? null;
 
         if ($from->diffInDays($to) > self::MAX_PERIOD_DAYS) {
             throw new BusinessRuleException('REPORT_PERIOD_TOO_LONG', 'The dashboard covers at most one year.', 422);
@@ -102,10 +104,12 @@ class DashboardService
             'arrears_aging' => $this->reports->arrearsAging(['branch_id' => $branch]),
             'recovery' => $this->recovery($branch),
             'upcoming_dues' => $this->upcomingDues($today, $branch),
-            'trend' => $this->reports->monthlyTrend(6, ['branch_id' => $branch]),
+            'trend' => $this->reports->monthlyTrend($months, ['branch_id' => $branch]),
             'branches' => $branch === null && BranchAccess::restrictedBranchId() === null ? $this->reports->branchPerformance(['from' => $from->toDateString(), 'to' => $to->toDateString()]) : [],
             'recent_transactions' => $this->recentTransactions($branch),
             'recent_applications' => $this->recentApplications($branch),
+            'action_queue' => $this->actionQueue($branch),
+            'repayment_rhythm' => $this->repaymentRhythm($branch, $loanNo),
         ];
     }
 
@@ -345,6 +349,208 @@ class DashboardService
                 'applied_at' => $l->created_at?->toApiString(),
                 'application_date' => $l->application_date?->toDateString(),
             ])->all();
+    }
+
+    /**
+     * Priority items in the action queue combining urgency (age/DPD) and financial exposure.
+     *
+     * @return array<string, mixed>
+     */
+    protected function actionQueue(?int $branch): array
+    {
+        $today = BusinessDate::todayImmutable();
+
+        // 1. Verification card: Oldest application awaiting verification / review with highest requested amount
+        $verificationApp = Loan::query()->topLevel()
+            ->with(['customer', 'borrowerGroup', 'product'])
+            ->when($branch, fn ($q, $id) => $q->where('branch_id', $id))
+            ->whereIn('status', [LoanStatus::Submitted->value, LoanStatus::InReview->value])
+            ->orderBy('application_date', 'asc')
+            ->orderByDesc('requested_amount')
+            ->first();
+
+        $verification = null;
+        if ($verificationApp) {
+            $appDate = $verificationApp->application_date ? CarbonImmutable::parse($verificationApp->application_date) : $verificationApp->created_at;
+            $waitingDays = $appDate ? (int) $appDate->diffInDays($today) : 0;
+            $verification = [
+                'public_id' => $verificationApp->public_id,
+                'application_no' => $verificationApp->application_no,
+                'borrower' => $verificationApp->customer?->full_name ?? $verificationApp->borrowerGroup?->name ?? 'Applicant',
+                'product' => $verificationApp->product?->name ?? 'Loan',
+                'amount' => $this->money($verificationApp->requested_amount),
+                'status' => $verificationApp->status->value,
+                'waiting_days' => $waitingDays,
+            ];
+        }
+
+        // 2. Recovery card: Highest DPD and opened arrears recovery case
+        $recoveryCase = RecoveryCase::query()
+            ->with(['loan.customer', 'branch'])
+            ->when($branch, fn ($q, $id) => $q->where('branch_id', $id))
+            ->where('status', 'open')
+            ->orderByDesc('opened_dpd')
+            ->orderByDesc('opened_arrears')
+            ->first();
+
+        $recovery = null;
+        if ($recoveryCase) {
+            $dpd = (int) $recoveryCase->opened_dpd;
+            $bucket = '180+ days late';
+            if ($dpd <= 30) $bucket = '1–30 days late';
+            elseif ($dpd <= 60) $bucket = '31–60 days late';
+            elseif ($dpd <= 90) $bucket = '61–90 days late';
+            elseif ($dpd <= 180) $bucket = '91–180 days late';
+
+            $recovery = [
+                'case_id' => $recoveryCase->id,
+                'case_no' => $recoveryCase->case_no ?? 'REC-'.$recoveryCase->id,
+                'borrower' => $recoveryCase->loan?->customer?->full_name ?? 'Borrower',
+                'loan_no' => $recoveryCase->loan?->loan_no ?? '',
+                'branch_name' => $recoveryCase->branch?->name ?? 'Branch',
+                'arrears_amount' => $this->money($recoveryCase->opened_arrears),
+                'days_past_due' => $dpd,
+                'bucket' => $bucket,
+            ];
+        } else {
+            $overdueLoan = Loan::query()->accounts()
+                ->with(['customer', 'branch'])
+                ->when($branch, fn ($q, $id) => $q->where('branch_id', $id))
+                ->where('days_past_due', '>', 0)
+                ->orderByDesc('days_past_due')
+                ->orderByDesc('outstanding_principal')
+                ->first();
+
+            if ($overdueLoan) {
+                $dpd = (int) $overdueLoan->days_past_due;
+                $bucket = '180+ days late';
+                if ($dpd <= 30) $bucket = '1–30 days late';
+                elseif ($dpd <= 60) $bucket = '31–60 days late';
+                elseif ($dpd <= 90) $bucket = '61–90 days late';
+                elseif ($dpd <= 180) $bucket = '91–180 days late';
+
+                $recovery = [
+                    'case_id' => null,
+                    'case_no' => $overdueLoan->loan_no,
+                    'borrower' => $overdueLoan->customer?->full_name ?? 'Borrower',
+                    'loan_no' => $overdueLoan->loan_no,
+                    'branch_name' => $overdueLoan->branch?->name ?? 'Branch',
+                    'arrears_amount' => $this->money($overdueLoan->outstanding_principal),
+                    'days_past_due' => $dpd,
+                    'bucket' => $bucket,
+                ];
+            }
+        }
+
+        // 3. Underwriting card: Files in review + returned files
+        $inReviewLoans = Loan::query()->topLevel()
+            ->when($branch, fn ($q, $id) => $q->where('branch_id', $id))
+            ->where('status', LoanStatus::InReview->value)
+            ->count();
+        $inReviewAmount = Loan::query()->topLevel()
+            ->when($branch, fn ($q, $id) => $q->where('branch_id', $id))
+            ->where('status', LoanStatus::InReview->value)
+            ->sum('requested_amount');
+
+        $returnedLoans = Loan::query()->topLevel()
+            ->when($branch, fn ($q, $id) => $q->where('branch_id', $id))
+            ->where('status', LoanStatus::Returned->value)
+            ->count();
+        $returnedAmount = Loan::query()->topLevel()
+            ->when($branch, fn ($q, $id) => $q->where('branch_id', $id))
+            ->where('status', LoanStatus::Returned->value)
+            ->sum('requested_amount');
+
+        return [
+            'verification' => $verification,
+            'recovery' => $recovery,
+            'underwriting' => [
+                'in_review_count' => $inReviewLoans,
+                'in_review_amount' => $this->money($inReviewAmount),
+                'returned_count' => $returnedLoans,
+                'returned_amount' => $this->money($returnedAmount),
+            ],
+        ];
+    }
+
+    /**
+     * Month-by-month repayment timeline and receipt history for borrower accounts.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function repaymentRhythm(?int $branch, ?string $loanNo = null): ?array
+    {
+        $today = BusinessDate::todayImmutable();
+
+        $activeLoans = Loan::query()->accounts()
+            ->with(['customer', 'product'])
+            ->when($branch, fn ($q, $id) => $q->where('branch_id', $id))
+            ->where('status', LoanStatus::Active->value)
+            ->get();
+
+        if ($activeLoans->isEmpty()) {
+            return null;
+        }
+
+        $selectedLoan = null;
+        if ($loanNo) {
+            $selectedLoan = $activeLoans->firstWhere('loan_no', $loanNo);
+        }
+
+        if (!$selectedLoan) {
+            $latestTx = LoanTransaction::query()
+                ->whereIn('loan_id', $activeLoans->pluck('id'))
+                ->whereIn('type', [TransactionType::Repayment->value, TransactionType::EarlySettlement->value])
+                ->latest('value_date')
+                ->latest('id')
+                ->first();
+
+            if ($latestTx) {
+                $selectedLoan = $activeLoans->firstWhere('id', $latestTx->loan_id);
+            }
+        }
+
+        $selectedLoan ??= $activeLoans->first();
+
+        $timeline = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $monthDate = $today->subMonths($i);
+            $monthStart = $monthDate->startOfMonth();
+            $monthEnd = $monthDate->endOfMonth();
+            $label = strtoupper($monthDate->format('M'));
+
+            $tx = LoanTransaction::query()
+                ->where('loan_id', $selectedLoan->id)
+                ->whereIn('type', [TransactionType::Repayment->value, TransactionType::EarlySettlement->value])
+                ->whereBetween('value_date', [$monthStart->toDateString(), $monthEnd->toDateString()])
+                ->latest('id')
+                ->first();
+
+            $timeline[] = [
+                'month' => $label,
+                'year' => (int) $monthDate->format('Y'),
+                'paid' => $tx !== null,
+                'amount' => $tx ? $this->money($tx->amount) : '0.00',
+                'receipt_no' => $tx?->txn_no,
+                'paid_at' => $tx?->value_date?->toDateString(),
+            ];
+        }
+
+        $availableAccounts = $activeLoans->map(fn (Loan $l) => [
+            'loan_no' => $l->loan_no,
+            'borrower' => $l->customer?->full_name ?? 'Borrower',
+            'product' => $l->product?->name ?? 'Loan',
+            'outstanding' => $this->money($l->outstanding_principal),
+            'days_past_due' => (int) $l->days_past_due,
+        ])->values()->all();
+
+        return [
+            'account' => $selectedLoan->loan_no,
+            'borrower' => $selectedLoan->customer?->full_name ?? 'Borrower',
+            'product' => $selectedLoan->product?->name ?? 'Loan',
+            'timeline' => $timeline,
+            'available_accounts' => $availableAccounts,
+        ];
     }
 
     protected function active(?int $branch)

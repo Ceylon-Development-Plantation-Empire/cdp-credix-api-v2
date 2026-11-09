@@ -48,6 +48,7 @@ final class CollateralTypes
                 'reference' => 'registration',
                 'fields' => [
                     'deed_no' => ['required', 'string', 'max:50'],
+                    'property_type' => ['nullable', 'string', 'max:50'],
                     'deed_date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
                     'notary' => ['nullable', 'string', 'max:150'],
                     'plan_no' => ['nullable', 'string', 'max:50'],
