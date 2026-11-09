@@ -225,7 +225,9 @@ class DocumentService
      */
     public function verify(Document $document, User $user): Document
     {
-        $this->assertPending($document);
+        if ($document->status === DocumentStatus::Verified) {
+            return $document;
+        }
 
         $document->forceFill([
             'status' => DocumentStatus::Verified,
