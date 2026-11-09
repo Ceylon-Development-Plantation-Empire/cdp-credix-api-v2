@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Loans;
 
+use App\Enums\CollateralReference;
 use App\Enums\CollateralStatus;
 use App\Enums\InstallmentStatus;
 use App\Enums\LoanStatus;
@@ -12,6 +13,7 @@ use App\Enums\TransactionType;
 use App\Exceptions\BusinessRuleException;
 use App\Finance\Schedule\ScheduleLine;
 use App\Finance\Support\Money;
+use App\Models\Collateral;
 use App\Models\Loan;
 use App\Models\LoanInstallment;
 use App\Models\LoanTransaction;
@@ -19,6 +21,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Services\Accounting\LoanPostingService;
 use App\Support\BusinessDate;
+use App\Support\Collateral\CollateralTypes;
 use App\Traits\ActivityLogTrait;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -222,8 +225,17 @@ class DisbursementService
 
         $collaterals = $loan->collaterals()->whereIn('status', [CollateralStatus::Proposed->value, CollateralStatus::Verified->value, CollateralStatus::Perfected->value])->get();
 
-        if ($collaterals->contains(fn ($c) => $c->status !== CollateralStatus::Perfected)) {
-            $problems[] = ['code' => 'COLLATERAL_NOT_PERFECTED', 'message' => 'Every collateral must be perfected (registered or in custody) before disbursement.'];
+        $collateralTypes = app(CollateralTypes::class);
+        if ($collaterals->contains(function (Collateral $c) use ($collateralTypes) {
+            $kind = $collateralTypes->reference($c->type);
+            // Custody assets (like physical gold deposited into branch vault) must be in custody (perfected)
+            if ($kind === CollateralReference::Custody) {
+                return $c->status !== CollateralStatus::Perfected;
+            }
+            // Registered collateral (property deed, vehicle CR, fixed deposit) verified during review stage is ready for disbursement
+            return ! in_array($c->status, [CollateralStatus::Verified, CollateralStatus::Perfected], true);
+        })) {
+            $problems[] = ['code' => 'COLLATERAL_NOT_PERFECTED', 'message' => 'Every collateral must be verified (and goods in custody) before disbursement.'];
         }
 
         if ($problems) {

@@ -110,6 +110,18 @@ describe('documents', function () {
             ->assertOk()
             ->assertHeader('X-Content-Type-Options', 'nosniff');
     });
+
+    it('streams an inline preview when inline parameter is provided', function () {
+        $id = upload($this, $this->publicId, 'nic-copy')->json('data.public_id');
+
+        $response = $this->actingAs($this->officer, 'api')
+            ->get("/api/v1/documents/{$id}/download?inline=1")
+            ->assertOk()
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+
+        $disposition = $response->headers->get('Content-Disposition');
+        expect($disposition)->toContain('inline;');
+    });
 });
 
 describe('bank accounts', function () {

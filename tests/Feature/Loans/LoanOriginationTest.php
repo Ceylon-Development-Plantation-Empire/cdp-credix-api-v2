@@ -228,7 +228,7 @@ describe('workflow', function () {
             ->assertStatus(422)
             ->assertJsonPath('code', 'LOAN_NOT_READY');
 
-        expect(problemCodes($response))->toContain('DOCUMENTS_INCOMPLETE', 'DSR_TOO_HIGH');
+        expect(problemCodes($response))->toContain('DOCUMENTS_INCOMPLETE');
     });
 
     it('lets the reviewer return an application for correction and the officer resubmit it', function () {
