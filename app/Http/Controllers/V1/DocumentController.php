@@ -145,7 +145,7 @@ class DocumentController extends Controller implements HasMiddleware
         }
     }
 
-    public function download(string $publicId)
+    public function download(Request $request, string $publicId)
     {
         try {
             $document = $this->findAccessible($publicId);
@@ -154,7 +154,9 @@ class DocumentController extends Controller implements HasMiddleware
                 return $this->notFound('Document not found');
             }
 
-            return $this->documents->download($document);
+            $inline = $request->boolean('inline') || $request->has('preview') || $request->query('inline') === '1';
+
+            return $this->documents->download($document, $inline);
         } catch (\Throwable $th) {
             return $this->serverError('Failed to download document', $th);
         }

@@ -276,20 +276,28 @@ class DocumentService
      * Stream the file. The download name is rebuilt from safe parts so the client's original
      * file name can never inject anything into the response headers.
      */
-    public function download(Document $document): StreamedResponse
+    public function download(Document $document, bool $inline = false): StreamedResponse
     {
         $extension = pathinfo($document->path, PATHINFO_EXTENSION);
         $name = Str::slug($document->documentType->name).'-'.$document->public_id.'.'.$extension;
 
-        $this->logActivity('DOWNLOAD', 'Document', "Downloaded document {$document->public_id}");
+        $action = $inline ? 'PREVIEW' : 'DOWNLOAD';
+        $desc = $inline ? "Previewed document {$document->public_id}" : "Downloaded document {$document->public_id}";
+        $this->logActivity($action, 'Document', $desc);
 
         // DECISION: the senior's FileUploadTrait stores and deletes but has no download method, so
         // reading the stored file back is the one direct use of the private disk (same disk as the trait).
-        return Storage::disk(self::DISK)->download($document->path, $name, [
+        $headers = [
             'Content-Type' => $document->mime_type,
             'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'private, no-store',
-        ]);
+        ];
+
+        if ($inline) {
+            return Storage::disk(self::DISK)->response($document->path, $name, $headers, 'inline');
+        }
+
+        return Storage::disk(self::DISK)->download($document->path, $name, $headers);
     }
 
     protected function targetFor(Model $owner): DocumentTarget
