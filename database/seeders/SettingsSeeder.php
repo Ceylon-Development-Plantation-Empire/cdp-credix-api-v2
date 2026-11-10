@@ -90,7 +90,7 @@ class SettingsSeeder extends Seeder
             /* KYC and OTP */
             ['kyc.validity_days', 'security', SettingType::Integer, '365', ['value' => 'required|integer|min:30|max:1095'],
                 'KYC valid for (days)', 'After this the customer must confirm their details again.'],
-            ['otp.expiry_minutes', 'security', SettingType::Integer, '5', ['value' => 'required|integer|min:1|max:30'],
+            ['otp.expiry_minutes', 'security', SettingType::Integer, '1', ['value' => 'required|integer|min:1|max:30'],
                 'OTP expiry (minutes)', null],
             ['otp.max_attempts', 'security', SettingType::Integer, '5', ['value' => 'required|integer|min:1|max:10'],
                 'Wrong OTP attempts allowed', null],

@@ -599,7 +599,7 @@ class LoanReviewLinkService
         $loan = $party->loan;
 
         return "CDP Capital: :code is your code to CONFIRM your details and loan {$loan->application_no} (Rs {$loan->decisionAmount()}, {$loan->tenure} installments). "
-            .'Valid :minutes minutes. Never share this code with anyone except the person you are confirming with.';
+            .'Valid :seconds seconds. Never share this code with anyone except the person you are confirming with.';
     }
 
     protected function latestPending(LoanParty $party): ?OtpChallenge

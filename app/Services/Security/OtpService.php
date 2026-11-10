@@ -60,7 +60,7 @@ class OtpService
                 'payload' => $payload,
                 'payload_hash' => $payloadHash,
                 'max_attempts' => (int) Setting::value('otp.max_attempts', 5),
-                'expires_at' => now()->addMinutes($this->expiryMinutes()),
+                'expires_at' => now()->addSeconds($this->expirySeconds()),
                 'ip_address' => request()?->ip(),
                 'user_agent' => substr((string) request()?->userAgent(), 0, 255),
                 'created_by' => $by?->id,
@@ -93,7 +93,7 @@ class OtpService
             $locked->forceFill([
                 'code_hash' => $this->hash($code),
                 'send_count' => $locked->send_count + 1,
-                'expires_at' => now()->addMinutes($this->expiryMinutes()),
+                'expires_at' => now()->addSeconds($this->expirySeconds()),
             ])->save();
         });
 
@@ -174,12 +174,23 @@ class OtpService
 
     public function expiryMinutes(): int
     {
-        return (int) Setting::value('otp.expiry_minutes', 5);
+        return max(1, (int) Setting::value('otp.expiry_minutes', 1));
+    }
+
+    public function expirySeconds(): int
+    {
+        return $this->expiryMinutes() * 60;
     }
 
     protected function send(OtpChallenge $challenge, string $code, string $message): void
     {
-        $text = strtr($message, [':code' => $code, ':minutes' => (string) $this->expiryMinutes()]);
+        $minutes = $this->expiryMinutes();
+        $seconds = $this->expirySeconds();
+        $text = strtr($message, [
+            ':code' => $code,
+            ':minutes' => (string) $minutes,
+            ':seconds' => (string) $seconds,
+        ]);
 
         // Only on a developer machine, and only when explicitly switched on, the code is written to
         // the local log so OTP flows can be tested without an SMS account. Never in any other environment.
