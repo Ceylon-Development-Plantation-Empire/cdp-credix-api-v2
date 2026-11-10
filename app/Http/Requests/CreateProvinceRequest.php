@@ -1,7 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests;
 
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -19,14 +22,14 @@ class CreateProvinceRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
         return [
             'name' => 'required|string|max:255',
-            'code' => 'required|string|unique:provinces,code|max:10',
-            'country_id' => 'required|exists:countries,id',
+            'code' => 'nullable|string|unique:org_units,code,NULL,id,unit_type,province|max:10',
+            'country_id' => 'required|exists:org_units,id,unit_type,country',
             'is_active' => 'sometimes|boolean',
         ];
     }

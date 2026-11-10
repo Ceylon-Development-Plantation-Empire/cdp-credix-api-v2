@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
@@ -20,10 +22,16 @@ class EmployeeHierarchyHistory extends Model
         'changed_by',
     ];
 
-    protected $casts = [
-        'effective_from' => 'date:Y-m-d',
-        'effective_to' => 'date:Y-m-d',
-    ];
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'effective_from' => 'date:Y-m-d',
+            'effective_to' => 'date:Y-m-d',
+        ];
+    }
 
     /**
      * The employee whose hierarchy history is being tracked.

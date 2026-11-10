@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
@@ -7,13 +9,15 @@ use App\Http\Requests\CreateDepartmentRequest;
 use App\Http\Requests\UpdateDepartmentRequest;
 use App\Models\Department;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
+use App\Traits\HandlesApiErrors;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
 class DepartmentController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors;
 
     /**
      * Define the middleware for this controller.
@@ -21,11 +25,11 @@ class DepartmentController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Department Index', ['only' => ['index', 'show']]),
-            new Middleware('permission:Department Create', ['only' => ['store']]),
-            new Middleware('permission:Department Update', ['only' => ['update']]),
-            new Middleware('permission:Department Delete', ['only' => ['destroy']]),
-            new Middleware('permission:Department Toggle Status', ['only' => ['toggleStatus']]),
+            new Middleware('permission:Department Index', only: ['index', 'show']),
+            new Middleware('permission:Department Create', only: ['store']),
+            new Middleware('permission:Department Update', only: ['update']),
+            new Middleware('permission:Department Delete', only: ['destroy']),
+            new Middleware('permission:Department Toggle Status', only: ['toggleStatus']),
         ];
     }
 
@@ -35,7 +39,7 @@ class DepartmentController extends Controller implements HasMiddleware
     public function index(Request $request)
     {
         try {
-            $perPage = $request->get('per_page', 15);
+            $perPage = max(1, min((int) $request->get('per_page', 15), 100));
             $query = Department::with('head');
 
             // Apply Search Scope if search parameter is present
@@ -156,6 +160,14 @@ class DepartmentController extends Controller implements HasMiddleware
      */
     public function destroy(string $id)
     {
+        return $this->destroyRecord(Department::find($id), 'department', 'Department');
+    }
+
+    /**
+     * Active designations of one department (lightweight list for dropdowns).
+     */
+    public function getDesignations(string $id)
+    {
         try {
             $department = Department::find($id);
 
@@ -166,26 +178,21 @@ class DepartmentController extends Controller implements HasMiddleware
                 ], 404);
             }
 
-            if (! auth('api')->user()->hasRole('Super Admin')) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Only Super Admin can delete departments',
-                ], 403);
-            }
-
-            $departmentName = $department->name;
-            $department->delete();
-
-            $this->logActivity('DELETE', 'Department', "Deleted department: {$departmentName}");
+            $designations = $department->designations()
+                ->where('is_active', true)
+                ->orderBy('order_weight', 'desc')
+                ->orderBy('name', 'asc')
+                ->get(['id', 'name', 'code', 'department_id', 'level_id', 'order_weight']);
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Department deleted successfully',
+                'message' => 'Designations retrieved successfully',
+                'data' => $designations,
             ], 200);
         } catch (\Throwable $th) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Failed to delete department',
+                'message' => 'Failed to retrieve designations',
                 'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
             ], 500);
         }

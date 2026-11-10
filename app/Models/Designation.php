@@ -1,17 +1,50 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
+use App\Enums\LookupType;
+use App\Models\Concerns\Audited;
+use App\Support\Lookups\LookupAttribute;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * A job title within a department.
+ *
+ * level is a lookup code (designation_level); when no order_weight is given it is taken from the
+ * level's meta.weight, so seniority weights are data instead of a hard-coded table.
+ *
+ * @property int $id
+ * @property string $name
+ * @property string $code
+ * @property string|null $level
+ * @property int $order_weight
+ */
 class Designation extends Model
 {
+    public static function nextCode(): string
+    {
+        $maxId = (int) (static::max('id') ?? 0) + 1;
+        do {
+            $code = 'DES-' . str_pad((string) $maxId, 3, '0', STR_PAD_LEFT);
+            $maxId++;
+        } while (static::where('code', $code)->exists());
+
+        return $code;
+    }
+
+    use Audited;
     use HasFactory;
 
+    /**
+     * @var list<string>
+     */
     protected $fillable = [
         'name',
         'code',
@@ -22,39 +55,59 @@ class Designation extends Model
         'is_active',
     ];
 
-    protected $casts = [
-        'is_active' => 'boolean',
-        'order_weight' => 'integer',
-    ];
+    /**
+     * @var list<string>
+     */
+    protected $hidden = ['level_id'];
 
     /**
-     * Boot the model.
+     * @var list<string>
      */
-    protected static function boot()
+    protected $appends = ['level'];
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
     {
-        parent::boot();
+        return [
+            'is_active' => 'boolean',
+            'order_weight' => 'integer',
+        ];
+    }
 
-        // Automatically calculate order weight based on level if not explicitly provided
-        static::saving(function ($designation) {
-            $weights = [
-                'entry' => 10,
-                'mid' => 20,
-                'senior' => 30,
-                'lead' => 40,
-                'executive' => 50,
-                'Manager' => 60,
-                'Director' => 70,
-            ];
+    /**
+     * Default the seniority weight from the level lookup (meta.weight) when none was given.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (Designation $desig) {
+            if (empty($desig->code)) {
+                $desig->code = static::nextCode();
+            }
+        });
 
-            // Map weight if level exists in the array and order_weight is not set/default
-            if (isset($weights[$designation->level]) && ($designation->order_weight === 0 || empty($designation->order_weight))) {
-                $designation->order_weight = $weights[$designation->level];
+        static::saving(function (Designation $designation) {
+            if (empty($designation->order_weight) && $designation->level_id !== null) {
+                $weight = Lookup::query()->whereKey($designation->level_id)->first()?->meta['weight'] ?? null;
+                $designation->order_weight = (int) ($weight ?? 0);
             }
         });
     }
 
     /**
-     * Scope a query to only include active designations.
+     * level (code) ↔ level_id (lookups FK).
+     *
+     * @return Attribute<string|null, string|null>
+     */
+    protected function level(): Attribute
+    {
+        return LookupAttribute::for($this, LookupType::DesignationLevel, 'level_id', 'level');
+    }
+
+    /**
+     * @param  Builder<Designation>  $query
+     * @return Builder<Designation>
      */
     public function scopeActive(Builder $query): Builder
     {
@@ -62,7 +115,10 @@ class Designation extends Model
     }
 
     /**
-     * Scope a query to search designations by name or code.
+     * Search by name or code.
+     *
+     * @param  Builder<Designation>  $query
+     * @return Builder<Designation>
      */
     public function scopeSearch(Builder $query, ?string $search): Builder
     {
@@ -77,7 +133,7 @@ class Designation extends Model
     }
 
     /**
-     * Get the department associated with the designation.
+     * @return BelongsTo<Department, $this>
      */
     public function department(): BelongsTo
     {
@@ -85,7 +141,7 @@ class Designation extends Model
     }
 
     /**
-     * Get the employees with this designation.
+     * @return HasMany<Employee, $this>
      */
     public function employees(): HasMany
     {

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 return [
 
     /*
@@ -67,7 +69,12 @@ return [
     |
     */
 
-    'timezone' => env('APP_TIMEZONE', 'UTC'),
+    // DECISION: one time zone everywhere: Sri Lanka (Asia/Colombo, UTC+05:30, no daylight saving).
+    // The application clock, every stored moment, every calendar date and every time the API shows
+    // are Sri Lankan time (App\Support\BusinessDate says what "today" is).
+    'timezone' => env('APP_TIMEZONE', 'Asia/Colombo'),
+
+    'business_timezone' => env('APP_TIMEZONE', 'Asia/Colombo'),
 
     /*
     |--------------------------------------------------------------------------

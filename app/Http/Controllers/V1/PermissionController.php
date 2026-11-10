@@ -1,11 +1,14 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CreatePermissionRequest;
 use App\Http\Requests\UpdatePermissionRequest;
 use App\Traits\ActivityLogTrait;
+use Database\Seeders\PermissionsSeeder;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
@@ -28,7 +31,8 @@ class PermissionController extends Controller implements HasMiddleware
     public function index(Request $request)
     {
         try {
-            $perPage = min((int) $request->get('per_page', 15), 100);
+            // The whole list is a few hundred short rows and the role screen needs all of it, so the cap is higher than elsewhere.
+            $perPage = min((int) $request->get('per_page', 15), 500);
 
             $query = Permission::query();
 
@@ -150,6 +154,14 @@ class PermissionController extends Controller implements HasMiddleware
                 unset($data['guard_name']);
             }
 
+            // The code checks permissions by exact name: renaming one would silently switch its check off.
+            if (isset($data['name']) && $data['name'] !== $permission->name && $this->isCodeDefined($permission->name)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'A system permission cannot be renamed (the code checks it by name); its group can be changed',
+                ], 422);
+            }
+
             $permission->update($data);
 
             $this->logActivity('UPDATE', 'Permission', "Updated permission: {$permission->name}", $data);
@@ -181,6 +193,13 @@ class PermissionController extends Controller implements HasMiddleware
                 ], 404);
             }
 
+            if ($this->isCodeDefined($permission->name)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'A system permission cannot be deleted; take it off the roles instead',
+                ], 422);
+            }
+
             if ($permission->roles()->count() > 0) {
                 return response()->json([
                     'status' => 'error',
@@ -207,6 +226,11 @@ class PermissionController extends Controller implements HasMiddleware
                 'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
             ], 500);
         }
+    }
+
+    protected function isCodeDefined(string $name): bool
+    {
+        return in_array($name, array_column(PermissionsSeeder::catalog(), 'name'), true);
     }
 
     public function getPermissionList()

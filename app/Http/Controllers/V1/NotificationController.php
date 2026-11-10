@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
@@ -18,8 +20,9 @@ class NotificationController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Notification Index', ['only' => ['index', 'unreadCount']]),
-            new Middleware('permission:Notification Mark Read', ['only' => ['markAsRead', 'markAllAsRead', 'destroy']]),
+            new Middleware('permission:Notification Index', only: ['index', 'unreadCount']),
+            new Middleware('permission:Notification Delete', only: ['destroy']),
+            new Middleware('permission:Notification Mark Read', only: ['markAsRead', 'markAllAsRead']),
         ];
     }
 
@@ -30,7 +33,7 @@ class NotificationController extends Controller implements HasMiddleware
     {
         try {
             $user = auth()->user();
-            $perPage = (int) $request->get('per_page', 15);
+            $perPage = max(1, min((int) $request->get('per_page', 15), 100));
 
             $query = $request->boolean('unread_only')
                 ? $user->unreadNotifications()

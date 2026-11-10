@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services;
 
 use App\Traits\ActivityLogTrait;
@@ -42,7 +44,8 @@ class DatabaseService
 
         // Determine mysqldump executable path.
         // Set MYSQL_DUMP_PATH in .env if mysqldump is not available in system PATH.
-        $mysqldump = env('MYSQL_DUMP_PATH');
+        // config(), not env(): env() returns null once the configuration is cached in production.
+        $mysqldump = config('database.mysqldump_path');
         if (! $mysqldump) {
             $mysqldump = 'mysqldump';
             if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Database\Seeders;
 
 use App\Models\User;
@@ -16,7 +18,8 @@ class UserSeeder extends Seeder
             ['email' => 'dev@localhost.com', 'username' => 'devadmin'],
             [
                 'name' => 'Development Admin',
-                'password' => bcrypt('password'),
+                'password' => 'password',
+                'must_change_password' => false,
                 'is_active' => true,
                 'can_login' => true,
             ]
