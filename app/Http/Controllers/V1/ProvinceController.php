@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
@@ -7,13 +9,15 @@ use App\Http\Requests\CreateProvinceRequest;
 use App\Http\Requests\UpdateProvinceRequest;
 use App\Models\Province;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
+use App\Traits\HandlesApiErrors;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
 class ProvinceController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors;
 
     /**
      * Define the middleware for this controller.
@@ -21,11 +25,11 @@ class ProvinceController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Province Index', ['only' => ['index', 'show']]),
-            new Middleware('permission:Province Create', ['only' => ['store']]),
-            new Middleware('permission:Province Update', ['only' => ['update']]),
-            new Middleware('permission:Province Delete', ['only' => ['destroy']]),
-            new Middleware('permission:Province Toggle Status', ['only' => ['toggleStatus']]),
+            new Middleware('permission:Province Index', only: ['index', 'show']),
+            new Middleware('permission:Province Create', only: ['store']),
+            new Middleware('permission:Province Update', only: ['update']),
+            new Middleware('permission:Province Delete', only: ['destroy']),
+            new Middleware('permission:Province Toggle Status', only: ['toggleStatus']),
         ];
     }
 
@@ -44,7 +48,7 @@ class ProvinceController extends Controller implements HasMiddleware
             }
 
             if ($request->has('country_id')) {
-                $query->where('country_id', $request->country_id);
+                $query->where('parent_id', $request->country_id);
             }
 
             if ($request->has('is_active')) {
@@ -160,32 +164,7 @@ class ProvinceController extends Controller implements HasMiddleware
      */
     public function destroy(string $id)
     {
-        try {
-            $province = Province::find($id);
-
-            if (! $province) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Province not found',
-                ], 404);
-            }
-
-            $provinceName = $province->name;
-            $province->delete();
-
-            $this->logActivity('DELETE', 'Province', "Deleted province: {$provinceName}");
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Province deleted successfully',
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to delete province',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
-        }
+        return $this->destroyRecord(Province::find($id), 'province', 'Province');
     }
 
     /**
@@ -197,10 +176,10 @@ class ProvinceController extends Controller implements HasMiddleware
             $query = Province::active();
 
             if ($request->has('country_id')) {
-                $query->where('country_id', $request->country_id);
+                $query->where('parent_id', $request->country_id);
             }
 
-            $provinces = $query->orderBy('name', 'asc')->get(['id', 'name', 'code', 'country_id']);
+            $provinces = $query->orderBy('name', 'asc')->get(['id', 'name', 'code', 'parent_id']);
 
             return response()->json([
                 'status' => 'success',

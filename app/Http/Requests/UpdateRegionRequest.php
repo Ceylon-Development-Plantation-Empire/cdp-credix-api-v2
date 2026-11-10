@@ -1,7 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests;
 
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -19,7 +22,7 @@ class UpdateRegionRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
@@ -27,8 +30,8 @@ class UpdateRegionRequest extends FormRequest
 
         return [
             'name' => 'sometimes|string|max:255',
-            'code' => 'sometimes|string|max:10|unique:regions,code,'.$id,
-            'zonal_id' => 'sometimes|exists:zonals,id',
+            'code' => 'sometimes|string|max:10|unique:org_units,code,'.$id.',id,unit_type,region',
+            'zonal_id' => 'sometimes|exists:org_units,id,unit_type,zone',
             'is_active' => 'sometimes|boolean',
         ];
     }

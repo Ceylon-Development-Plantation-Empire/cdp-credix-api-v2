@@ -1,17 +1,15 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use App\Enums\OrgUnitType;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Province extends Model
+class Province extends OrgUnit
 {
-    use HasFactory;
-
     protected $fillable = [
         'name',
         'code',
@@ -19,31 +17,24 @@ class Province extends Model
         'is_active',
     ];
 
-    protected $casts = [
-        'is_active' => 'boolean',
-    ];
-
     /**
-     * Scope a query to only include active provinces.
+     * @return array<string, string>
      */
-    public function scopeActive(Builder $query): Builder
+    protected function casts(): array
     {
-        return $query->where('is_active', true);
+        return [
+            'is_active' => 'boolean',
+        ];
     }
 
-    /**
-     * Scope a query to search provinces by name or code.
-     */
-    public function scopeSearch(Builder $query, ?string $search): Builder
+    public static function unitType(): OrgUnitType
     {
-        if (empty($search)) {
-            return $query;
-        }
+        return OrgUnitType::Province;
+    }
 
-        return $query->where(function (Builder $q) use ($search) {
-            $q->where('name', 'like', "%{$search}%")
-                ->orWhere('code', 'like', "%{$search}%");
-        });
+    protected static function parentAttribute(): ?string
+    {
+        return 'country_id';
     }
 
     /**
@@ -51,7 +42,7 @@ class Province extends Model
      */
     public function country(): BelongsTo
     {
-        return $this->belongsTo(Country::class);
+        return $this->belongsTo(Country::class, 'parent_id');
     }
 
     /**
@@ -59,6 +50,6 @@ class Province extends Model
      */
     public function zonals(): HasMany
     {
-        return $this->hasMany(Zonal::class);
+        return $this->hasMany(Zonal::class, 'parent_id');
     }
 }

@@ -1,15 +1,14 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use App\Enums\OrgUnitType;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Country extends Model
+class Country extends OrgUnit
 {
-    use HasFactory;
-
     protected $fillable = [
         'name',
         'code',
@@ -17,31 +16,26 @@ class Country extends Model
         'is_active',
     ];
 
-    protected $casts = [
-        'is_active' => 'boolean',
-    ];
-
     /**
-     * Scope a query to only include active countries.
+     * @return array<string, string>
      */
-    public function scopeActive(Builder $query): Builder
+    protected function casts(): array
     {
-        return $query->where('is_active', true);
+        return [
+            'is_active' => 'boolean',
+        ];
+    }
+
+    public static function unitType(): OrgUnitType
+    {
+        return OrgUnitType::Country;
     }
 
     /**
-     * Scope a query to search countries by name, code, or description.
+     * Get the provinces of this country.
      */
-    public function scopeSearch(Builder $query, ?string $search): Builder
+    public function provinces(): HasMany
     {
-        if (empty($search)) {
-            return $query;
-        }
-
-        return $query->where(function (Builder $q) use ($search) {
-            $q->where('name', 'like', "%{$search}%")
-                ->orWhere('code', 'like', "%{$search}%")
-                ->orWhere('description', 'like', "%{$search}%");
-        });
+        return $this->hasMany(Province::class, 'parent_id');
     }
 }

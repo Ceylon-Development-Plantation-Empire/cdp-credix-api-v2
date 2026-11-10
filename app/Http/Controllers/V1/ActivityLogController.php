@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
@@ -19,7 +21,7 @@ class ActivityLogController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Activity Log Index', ['only' => ['index', 'show']]),
+            new Middleware('permission:Activity Log Index', only: ['index', 'show']),
         ];
     }
 

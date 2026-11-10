@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests;
 
 use Illuminate\Contracts\Validation\Validator;
@@ -23,7 +25,7 @@ class CreateGroupRequest extends FormRequest
     {
         return [
             'name' => 'required|string|max:255',
-            'code' => 'required|string|unique:groups,code|max:50',
+            'code' => 'nullable|string|unique:org_units,code,NULL,id,unit_type,group|max:50',
             'description' => 'nullable|string',
             'is_active' => 'sometimes|boolean',
         ];

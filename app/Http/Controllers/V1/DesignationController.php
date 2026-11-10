@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
@@ -7,13 +9,15 @@ use App\Http\Requests\CreateDesignationRequest;
 use App\Http\Requests\UpdateDesignationRequest;
 use App\Models\Designation;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
+use App\Traits\HandlesApiErrors;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
 class DesignationController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors;
 
     /**
      * Define the middleware for this controller.
@@ -21,11 +25,11 @@ class DesignationController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Designation Index', ['only' => ['index', 'show']]),
-            new Middleware('permission:Designation Create', ['only' => ['store']]),
-            new Middleware('permission:Designation Update', ['only' => ['update']]),
-            new Middleware('permission:Designation Delete', ['only' => ['destroy']]),
-            new Middleware('permission:Designation Toggle Status', ['only' => ['toggleStatus']]),
+            new Middleware('permission:Designation Index', only: ['index', 'show']),
+            new Middleware('permission:Designation Create', only: ['store']),
+            new Middleware('permission:Designation Update', only: ['update']),
+            new Middleware('permission:Designation Delete', only: ['destroy']),
+            new Middleware('permission:Designation Toggle Status', only: ['toggleStatus']),
         ];
     }
 
@@ -168,39 +172,7 @@ class DesignationController extends Controller implements HasMiddleware
      */
     public function destroy(string $id)
     {
-        try {
-            $designation = Designation::find($id);
-
-            if (! $designation) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Designation not found',
-                ], 404);
-            }
-
-            if (! auth('api')->user()->hasRole('Super Admin')) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Only Super Admin can delete designations',
-                ], 403);
-            }
-
-            $designationName = $designation->name;
-            $designation->delete();
-
-            $this->logActivity('DELETE', 'Designation', "Deleted designation: {$designationName}");
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Designation deleted successfully',
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to delete designation',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
-        }
+        return $this->destroyRecord(Designation::find($id), 'designation', 'Designation');
     }
 
     /**
@@ -217,7 +189,7 @@ class DesignationController extends Controller implements HasMiddleware
 
             $designations = $query->orderBy('order_weight', 'desc')
                 ->orderBy('name', 'asc')
-                ->get(['id', 'name', 'code', 'department_id', 'level', 'order_weight']);
+                ->get(['id', 'name', 'code', 'department_id', 'level_id', 'order_weight']);
 
             return response()->json([
                 'status' => 'success',

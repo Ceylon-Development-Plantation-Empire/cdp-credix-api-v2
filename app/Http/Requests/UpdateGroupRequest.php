@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests;
 
 use Illuminate\Contracts\Validation\Validator;
@@ -25,7 +27,7 @@ class UpdateGroupRequest extends FormRequest
 
         return [
             'name' => 'sometimes|string|max:255',
-            'code' => 'sometimes|string|max:50|unique:groups,code,'.$id,
+            'code' => 'sometimes|string|max:50|unique:org_units,code,'.$id.',id,unit_type,group',
             'description' => 'nullable|string',
             'is_active' => 'sometimes|boolean',
         ];

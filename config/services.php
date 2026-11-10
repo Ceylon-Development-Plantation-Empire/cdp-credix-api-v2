@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 return [
 
     /*
@@ -41,6 +43,32 @@ return [
         'username' => env('DIALOG_SMS_USERNAME'),
         'password' => env('DIALOG_SMS_PASSWORD'),
         'mask' => env('DIALOG_SMS_MASK'),
+
+        // Testing against real records: comma-separated handsets that receive every SMS instead
+        // of the customer (App\Services\Sms\AllowListedSmsService). Ignored in production.
+        'allowed_numbers' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('SMS_ALLOWED_NUMBERS', ''))
+        ))),
+    ],
+
+    // CDP Connect: the CDP investment system, read for Customer 360 and customer search.
+    'cdp_connect' => [
+        'base_url' => env('CDP_CONNECT_BASE_URL'),
+        'api_key' => env('CDP_CONNECT_API_KEY'),
+        'timeout' => (int) env('CDP_CONNECT_TIMEOUT', 15),
+        'key_header' => 'X-Credix-Key',
+    ],
+
+    // The other direction: CDP Core calling CrediX (policy-hold lookup before a payout). Core sends this key in X-Core-Key.
+    'cdp_core' => [
+        'inbound_key' => env('CDP_CORE_INBOUND_KEY'),
+    ],
+
+    // Developer machines only (APP_ENV=local): write OTP codes to the log instead of sending SMS.
+    // Ignored in every other environment. Keep false unless you are testing OTP flows locally.
+    'otp' => [
+        'log_codes_locally' => env('OTP_LOG_CODES_LOCALLY', false),
     ],
 
 ];

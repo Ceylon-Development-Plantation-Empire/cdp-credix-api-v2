@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
@@ -7,13 +9,15 @@ use App\Http\Requests\CreateGroupRequest;
 use App\Http\Requests\UpdateGroupRequest;
 use App\Models\Group;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
+use App\Traits\HandlesApiErrors;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
 class GroupController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors;
 
     /**
      * Define the middleware for this controller.
@@ -21,11 +25,11 @@ class GroupController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Group Index', ['only' => ['index', 'show']]),
-            new Middleware('permission:Group Create', ['only' => ['store']]),
-            new Middleware('permission:Group Update', ['only' => ['update']]),
-            new Middleware('permission:Group Delete', ['only' => ['destroy']]),
-            new Middleware('permission:Group Toggle Status', ['only' => ['toggleStatus']]),
+            new Middleware('permission:Group Index', only: ['index', 'show']),
+            new Middleware('permission:Group Create', only: ['store']),
+            new Middleware('permission:Group Update', only: ['update']),
+            new Middleware('permission:Group Delete', only: ['destroy']),
+            new Middleware('permission:Group Toggle Status', only: ['toggleStatus']),
         ];
     }
 
@@ -156,40 +160,7 @@ class GroupController extends Controller implements HasMiddleware
      */
     public function destroy(string $id)
     {
-        try {
-            $group = Group::find($id);
-
-            if (! $group) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Group not found',
-                ], 404);
-            }
-
-            $groupName = $group->name;
-
-            if (! auth('api')->user()->hasRole('Super Admin')) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Only Super Admin can delete groups',
-                ], 403);
-            }
-
-            $group->delete();
-
-            $this->logActivity('DELETE', 'Group', "Deleted group: {$groupName}");
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Group deleted successfully',
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to delete group',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
-        }
+        return $this->destroyRecord(Group::find($id), 'group', 'Group');
     }
 
     /**

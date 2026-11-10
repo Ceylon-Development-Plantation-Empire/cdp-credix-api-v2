@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
@@ -7,13 +9,15 @@ use App\Http\Requests\CreateRegionRequest;
 use App\Http\Requests\UpdateRegionRequest;
 use App\Models\Region;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
+use App\Traits\HandlesApiErrors;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
 class RegionController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors;
 
     /**
      * Define the middleware for this controller.
@@ -21,11 +25,11 @@ class RegionController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:Region Index', ['only' => ['index', 'show']]),
-            new Middleware('permission:Region Create', ['only' => ['store']]),
-            new Middleware('permission:Region Update', ['only' => ['update']]),
-            new Middleware('permission:Region Delete', ['only' => ['destroy']]),
-            new Middleware('permission:Region Toggle Status', ['only' => ['toggleStatus']]),
+            new Middleware('permission:Region Index', only: ['index', 'show']),
+            new Middleware('permission:Region Create', only: ['store']),
+            new Middleware('permission:Region Update', only: ['update']),
+            new Middleware('permission:Region Delete', only: ['destroy']),
+            new Middleware('permission:Region Toggle Status', only: ['toggleStatus']),
         ];
     }
 
@@ -44,7 +48,7 @@ class RegionController extends Controller implements HasMiddleware
             }
 
             if ($request->has('zonal_id')) {
-                $query->where('zonal_id', $request->zonal_id);
+                $query->where('parent_id', $request->zonal_id);
             }
 
             if ($request->has('is_active')) {
@@ -160,40 +164,7 @@ class RegionController extends Controller implements HasMiddleware
      */
     public function destroy(string $id)
     {
-        try {
-            $region = Region::find($id);
-
-            if (! $region) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Region not found',
-                ], 404);
-            }
-
-            $regionName = $region->name;
-
-            if (! auth('api')->user()->hasRole('Super Admin')) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Only Super Admin can delete regions',
-                ], 403);
-            }
-
-            $region->delete();
-
-            $this->logActivity('DELETE', 'Region', "Deleted region: {$regionName}");
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Region deleted successfully',
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to delete region',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
-        }
+        return $this->destroyRecord(Region::find($id), 'region', 'Region');
     }
 
     /**
@@ -205,10 +176,10 @@ class RegionController extends Controller implements HasMiddleware
             $query = Region::active();
 
             if ($request->has('zonal_id')) {
-                $query->where('zonal_id', $request->zonal_id);
+                $query->where('parent_id', $request->zonal_id);
             }
 
-            $regions = $query->orderBy('name', 'asc')->get(['id', 'name', 'code', 'zonal_id']);
+            $regions = $query->orderBy('name', 'asc')->get(['id', 'name', 'code', 'parent_id']);
 
             return response()->json([
                 'status' => 'success',

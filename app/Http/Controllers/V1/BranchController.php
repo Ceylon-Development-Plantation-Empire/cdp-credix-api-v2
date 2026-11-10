@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
@@ -7,13 +9,15 @@ use App\Http\Requests\CreateBranchRequest;
 use App\Http\Requests\UpdateBranchRequest;
 use App\Models\Branch;
 use App\Traits\ActivityLogTrait;
+use App\Traits\DeletesRecords;
+use App\Traits\HandlesApiErrors;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 
 class BranchController extends Controller implements HasMiddleware
 {
-    use ActivityLogTrait;
+    use ActivityLogTrait, DeletesRecords, HandlesApiErrors;
 
     public static function middleware(): array
     {
@@ -153,42 +157,7 @@ class BranchController extends Controller implements HasMiddleware
 
     public function destroy(string $id)
     {
-        try {
-            $branch = Branch::find($id);
-
-            if (! $branch) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Branch not found',
-                ], 404);
-            }
-
-            // Check if user is Super Admin
-            if (! auth('api')->user()->hasRole('Super Admin')) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Only Super Admin can delete branches',
-                ], 403);
-            }
-
-            $branchName = $branch->name;
-            $branch->delete();
-
-            $this->logActivity('DELETE', 'Branch', "Deleted branch: {$branchName}");
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Branch deleted successfully',
-            ], 200);
-        } catch (\Throwable $th) {
-            $this->logActivity('DELETE_FAILED', 'Branch', "Failed to delete branch with ID: {$id}", ['error' => $th->getMessage()], 'error');
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to delete branch',
-                'error' => config('app.debug') ? $th->getMessage() : 'Internal server error',
-            ], 500);
-        }
+        return $this->destroyRecord(Branch::find($id), 'branch', 'Branch');
     }
 
     public function toggleStatus(string $id)
@@ -243,7 +212,7 @@ class BranchController extends Controller implements HasMiddleware
             }
 
             $branches = $query->select('id', 'name', 'code', 'city', 'province_id', 'region_id', 'zone_id')
-                ->with(['province:id,name', 'region:id,name', 'zonal:id,name'])
+                ->with(['province:id,name,parent_id', 'region:id,name,parent_id', 'zonal:id,name,parent_id'])
                 ->orderBy('name', 'asc')
                 ->get();
 

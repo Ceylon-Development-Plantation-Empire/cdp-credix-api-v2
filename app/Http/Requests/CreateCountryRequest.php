@@ -1,7 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests;
 
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -19,13 +22,13 @@ class CreateCountryRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
         return [
             'name' => 'required|string|max:255',
-            'code' => 'required|string|unique:countries,code|max:10',
+            'code' => 'nullable|string|unique:org_units,code,NULL,id,unit_type,country|max:10',
             'description' => 'nullable|string|max:1000',
             'is_active' => 'sometimes|boolean',
         ];

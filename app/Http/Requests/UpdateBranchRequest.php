@@ -1,7 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests;
 
+use App\Enums\LookupType;
+use App\Rules\LookupCode;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -20,20 +24,20 @@ class UpdateBranchRequest extends FormRequest
         return [
             'name' => 'sometimes|string|max:255',
             'code' => 'sometimes|string|max:20|unique:branches,code,'.$id,
-            'group_id' => 'nullable|exists:groups,id',
+            'group_id' => 'nullable|exists:org_units,id,unit_type,group',
             'address_line1' => 'sometimes|string|max:255',
             'address_line2' => 'nullable|string|max:255',
             'city' => 'sometimes|string|max:100',
             'postal_code' => 'nullable|string|max:20',
-            'zone_id' => 'sometimes|exists:zonals,id',
-            'region_id' => 'sometimes|exists:regions,id',
-            'province_id' => 'sometimes|exists:provinces,id',
+            'zone_id' => 'sometimes|exists:org_units,id,unit_type,zone',
+            'region_id' => 'sometimes|exists:org_units,id,unit_type,region',
+            'province_id' => 'sometimes|exists:org_units,id,unit_type,province',
             'phone_primary' => 'sometimes|string|max:20',
             'phone_secondary' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:255',
             'fax' => 'nullable|string|max:20',
             'opening_date' => 'sometimes|date',
-            'branch_type' => 'sometimes|in:main,city,satellite,mobile',
+            'branch_type' => ['sometimes', 'string', new LookupCode(LookupType::BranchType)],
             'latitude' => 'nullable|numeric|between:-90,90',
             'longitude' => 'nullable|numeric|between:-180,180',
             'is_active' => 'sometimes|boolean',

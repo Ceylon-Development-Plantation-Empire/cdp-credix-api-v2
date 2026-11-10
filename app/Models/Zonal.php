@@ -1,17 +1,15 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use App\Enums\OrgUnitType;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Zonal extends Model
+class Zonal extends OrgUnit
 {
-    use HasFactory;
-
     protected $fillable = [
         'name',
         'code',
@@ -19,31 +17,24 @@ class Zonal extends Model
         'is_active',
     ];
 
-    protected $casts = [
-        'is_active' => 'boolean',
-    ];
-
     /**
-     * Scope a query to only include active zonals.
+     * @return array<string, string>
      */
-    public function scopeActive(Builder $query): Builder
+    protected function casts(): array
     {
-        return $query->where('is_active', true);
+        return [
+            'is_active' => 'boolean',
+        ];
     }
 
-    /**
-     * Scope a query to search zonals by name or code.
-     */
-    public function scopeSearch(Builder $query, ?string $search): Builder
+    public static function unitType(): OrgUnitType
     {
-        if (empty($search)) {
-            return $query;
-        }
+        return OrgUnitType::Zone;
+    }
 
-        return $query->where(function (Builder $q) use ($search) {
-            $q->where('name', 'like', "%{$search}%")
-                ->orWhere('code', 'like', "%{$search}%");
-        });
+    protected static function parentAttribute(): ?string
+    {
+        return 'province_id';
     }
 
     /**
@@ -51,7 +42,7 @@ class Zonal extends Model
      */
     public function province(): BelongsTo
     {
-        return $this->belongsTo(Province::class);
+        return $this->belongsTo(Province::class, 'parent_id');
     }
 
     /**
@@ -59,6 +50,6 @@ class Zonal extends Model
      */
     public function regions(): HasMany
     {
-        return $this->hasMany(Region::class);
+        return $this->hasMany(Region::class, 'parent_id');
     }
 }
