@@ -22,12 +22,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call(SystemDataSeeder::class);
-
-        if (! app()->environment('production')) {
-            $this->call([
-                UserSeeder::class,
-                ProductCatalogSeeder::class,
-            ]);
-        }
+        $this->call(UserSeeder::class);
+        $this->call(ProductCatalogSeeder::class);
     }
 }
