@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CrediX — Smarter Financial Management</title>
     <link rel="icon" type="image/png" href="{{ asset('images/credix-favicon.png') }}">
@@ -9,7 +9,7 @@
     <link rel="apple-touch-icon" href="{{ asset('images/credix-favicon.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Sans+Sinhala:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Sans+Sinhala:wght@400;500;600;700&family=Noto+Sans+Tamil:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
 
     <style>
         :root {
@@ -27,9 +27,9 @@
             --text-footer: #6F5E52;
             --badge-border: rgba(236, 147, 11, 0.22);
             --badge-bg: rgba(236, 147, 11, 0.06);
-            --font-display: 'Space Grotesk', 'Noto Sans Sinhala', 'Manrope', system-ui, -apple-system, sans-serif;
-            --font-currency: 'Space Grotesk', 'Noto Sans Sinhala', 'Iskoola Pota', 'Manrope', system-ui, sans-serif;
-            --font-body: 'Manrope', 'Noto Sans Sinhala', system-ui, -apple-system, sans-serif;
+            --font-display: 'Space Grotesk', 'Noto Sans Tamil', 'Latha', 'Nirmala UI', 'Noto Sans Sinhala', 'Manrope', system-ui, -apple-system, sans-serif;
+            --font-currency: 'Space Grotesk', 'Noto Sans Tamil', 'Latha', 'Nirmala UI', 'Noto Sans Sinhala', 'Iskoola Pota', sans-serif;
+            --font-body: 'Manrope', 'Noto Sans Tamil', 'Noto Sans Sinhala', system-ui, -apple-system, sans-serif;
         }
 
         *, *::before, *::after {
@@ -768,7 +768,8 @@
             'use strict';
 
             // STRICT SRI LANKAN CURRENCIES ONLY: NO DOLLAR SYMBOLS ANYWHERE
-            var SYMBOLS = ['LKR', 'රු', 'Rs'];
+            // Allowed exactly: "LKR", "රු" (\u0DBB\u0DD4), "Rs", "௹" (\u0BF9)
+            var SYMBOLS = ['LKR', '\u0DBB\u0DD4', 'Rs', '\u0BF9'];
 
             var stage = document.getElementById('stage');
             var container = document.getElementById('currencyField');
@@ -886,9 +887,18 @@
                     maxParallax = 6;
                 }
 
+                var symIndex = index % SYMBOLS.length;
+                var symChar = SYMBOLS[symIndex];
+                var baseFontSize = fontSize;
+                // Reduce font-size by about 10% for Tamil rupee sign "௹" so it balances with LKR / Rs
+                if (symChar === '\u0BF9') {
+                    fontSize = Math.round(fontSize * 0.90);
+                }
+                if (fontSize > maxAllowedSize) fontSize = maxAllowedSize;
+
                 var el = document.createElement('div');
                 el.className = 'currency-symbol ' + tier;
-                el.textContent = SYMBOLS[index % SYMBOLS.length];
+                el.textContent = symChar;
                 el.style.fontSize = fontSize + 'px';
                 if (blurAmount !== 'none') {
                     el.style.filter = 'blur(' + blurAmount + ')';
@@ -928,7 +938,10 @@
                 return {
                     el: el,
                     tier: tier,
+                    baseFontSize: baseFontSize,
                     fontSize: fontSize,
+                    symIndex: symIndex,
+                    symbol: symChar,
                     baseOpacity: baseOpacity,
                     maxParallax: maxParallax,
                     baseX: baseX,
@@ -1132,8 +1145,13 @@
                     item.style.setProperty('--b-rot', rot);
 
                     if (b % 2 === 0) {
-                        item.textContent = SYMBOLS[b % SYMBOLS.length];
-                        item.style.fontSize = (11 + Math.random() * 3) + 'px';
+                        var burstSym = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+                        item.textContent = burstSym;
+                        var burstSize = (11 + Math.random() * 3);
+                        if (burstSym === '\u0BF9') {
+                            burstSize = Math.round(burstSize * 0.90);
+                        }
+                        item.style.fontSize = burstSize + 'px';
                     } else {
                         // Tiny glowing particle dot
                         item.textContent = '•';
@@ -1213,6 +1231,16 @@
                     if (s.y < -90) {
                         s.y = vh + 80 + (Math.random() * 30);
                         s.baseX = 15 + Math.random() * (vw - 30);
+                        s.symIndex = (s.symIndex + 1) % SYMBOLS.length;
+                        var newSym = SYMBOLS[s.symIndex];
+                        s.symbol = newSym;
+                        s.el.textContent = newSym;
+                        var curSize = s.baseFontSize;
+                        if (newSym === '\u0BF9') {
+                            curSize = Math.round(curSize * 0.90);
+                        }
+                        var maxCap = (vw <= 640) ? 44 : 60;
+                        s.el.style.fontSize = Math.min(maxCap, curSize) + 'px';
                     }
 
                     // Gentle horizontal drift
