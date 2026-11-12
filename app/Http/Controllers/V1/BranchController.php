@@ -36,6 +36,11 @@ class BranchController extends Controller implements HasMiddleware
             $perPage = min((int) $request->get('per_page', 15), 100);
             $query = Branch::with(['province', 'region', 'zonal']);
 
+            $restricted = \App\Support\BranchAccess::restrictedBranchIds($request->user());
+            if ($restricted !== null) {
+                $query->whereIn('branches.id', $restricted);
+            }
+
             if ($request->has('search')) {
                 $query->search($request->search);
             }
@@ -198,6 +203,11 @@ class BranchController extends Controller implements HasMiddleware
     {
         try {
             $query = Branch::active();
+
+            $restricted = \App\Support\BranchAccess::restrictedBranchIds($request->user());
+            if ($restricted !== null) {
+                $query->whereIn('branches.id', $restricted);
+            }
 
             if ($request->has('province_id')) {
                 $query->where('province_id', $request->province_id);
