@@ -73,7 +73,16 @@ class UpdateUserRequest extends FormRequest
         $validator->after(function (Validator $validator) {
             $user = User::query()->find((int) $this->route('user'));
 
-            if (! $user || $user->employee_id !== null) {
+            if (! $user) {
+                return;
+            }
+
+            if ($user->employee_id !== null && $this->has('branch_id') && ! $this->filled('branch_id')) {
+                $validator->errors()->add('branch_id', 'The branch field is required for staff.');
+                return;
+            }
+
+            if ($user->employee_id !== null) {
                 return;
             }
 
@@ -83,7 +92,7 @@ class UpdateUserRequest extends FormRequest
                 return;
             }
 
-            foreach (['employee_code', 'id_number', 'designation_id'] as $field) {
+            foreach (['employee_code', 'id_number', 'designation_id', 'branch_id'] as $field) {
                 if (! $this->filled($field)) {
                     $validator->errors()->add($field, "The {$field} field is required: this user has no employee record yet.");
                 }
