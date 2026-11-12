@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Enums\IdType;
 use App\Http\Requests\Concerns\FormatsValidationErrors;
 use App\Rules\UniqueEmployeeIdNumber;
+use App\Rules\ValidIdNumber;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rules\Password;
 
@@ -46,7 +48,7 @@ class CreateUserRequest extends FormRequest
 
             /* Staff: the embedded employee record */
             'employee_code' => ['required_if:user_type,staff', 'nullable', 'string', 'max:30', 'unique:employees,employee_code'],
-            'id_number' => ['required_if:user_type,staff', 'nullable', 'string', 'max:30', new UniqueEmployeeIdNumber],
+            'id_number' => ['required_if:user_type,staff', 'nullable', 'string', 'max:30', new UniqueEmployeeIdNumber, new ValidIdNumber(IdType::Nic)],
             'branch_id' => ['nullable', 'exists:branches,id'],
             'zonal_id' => ['nullable', 'exists:org_units,id,unit_type,zone'],
             'region_id' => ['nullable', 'exists:org_units,id,unit_type,region'],

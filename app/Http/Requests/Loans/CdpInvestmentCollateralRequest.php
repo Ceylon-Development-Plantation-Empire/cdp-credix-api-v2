@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Loans;
 
+use App\Enums\IdType;
 use App\Http\Requests\Concerns\FormatsValidationErrors;
+use App\Rules\ValidIdNumber;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -23,7 +25,7 @@ class CdpInvestmentCollateralRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nic' => ['required', 'string', 'max:20'],
+            'nic' => ['required', 'string', 'max:20', new ValidIdNumber(IdType::Nic)],
             'policy_number' => ['required', 'string', 'max:100'],
         ];
     }

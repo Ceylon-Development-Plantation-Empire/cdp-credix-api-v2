@@ -37,17 +37,17 @@ class SettingsSeeder extends Seeder
             ['guarantor.max_active_guarantees', 'guarantors', SettingType::Integer, '2', ['value' => 'required|integer|min:1|max:10'],
                 'Open loans one person can guarantee', 'A guarantor can guarantee at most this many open loans at the same time.'],
             ['guarantor.block_after_invocation', 'guarantors', SettingType::Boolean, '1', ['value' => 'required|boolean'],
-                'Block guarantor who paid for a borrower', 'A guarantor who paid an installment for a borrower cannot apply for a loan or give a new guarantee until that loan is settled (D-2).'],
+                'Block guarantor who paid for a borrower', 'A guarantor who paid an installment for a borrower cannot apply for a loan or give a new guarantee until that loan is settled.'],
 
             /* Repayment and penalty */
             ['repayment.grace_period_days', 'repayment', SettingType::Integer, '7', ['value' => 'required|integer|min:0|max:90'],
                 'Grace period (days)', 'Days after the due date before an installment is overdue and penalised. A product can set its own.'],
             ['penalty.calculation', 'repayment', SettingType::String, 'percent_of_overdue', ['value' => 'required|in:fixed,percent_of_overdue'],
-                'Default penalty method', 'fixed = a rupee amount; percent_of_overdue = a % of the unpaid installment (D-4). A product can set its own.'],
+                'Default penalty method', 'Fallback late fee calculation method: percentage of overdue installment or fixed rupee amount. A product can set its own.'],
             ['penalty.value', 'repayment', SettingType::Decimal, '2', ['value' => 'required|numeric|min:0|max:100000'],
                 'Default penalty value', 'Rupees when the method is fixed, percent when it is percent_of_overdue.'],
             ['penalty.recurrence', 'repayment', SettingType::String, 'monthly_while_overdue', ['value' => 'required|in:once,monthly_while_overdue'],
-                'Default penalty recurrence', 'once = one penalty per installment; monthly_while_overdue = again every full month it stays unpaid.'],
+                'Default penalty recurrence', 'Fallback recurrence: charged once per installment, or repeats monthly while overdue.'],
             ['payment.max_backdate_days', 'repayment', SettingType::Integer, '0', ['value' => 'required|integer|min:0|max:30'],
                 'Payment back-dating allowed (days)', 'A payment dated further back needs an approval request.'],
             ['allocation.order.conventional', 'repayment', SettingType::Json, json_encode(['penalty', 'charge', 'profit', 'principal']),
@@ -59,9 +59,9 @@ class SettingsSeeder extends Seeder
 
             /* Recovery */
             ['recovery.notice_dpd', 'recovery', SettingType::Integer, '90', ['value' => 'required|integer|min:1|max:365'],
-                'Recovery notice after (days past due)', 'Recovery notification to borrower and guarantors (D-3).'],
+                'Recovery notice after (days past due)', 'Recovery notification to borrower and guarantors.'],
             ['recovery.assign_agent_dpd', 'recovery', SettingType::Integer, '180', ['value' => 'required|integer|min:1|max:730'],
-                'Assign recovery agent after (days past due)', 'An internal or external recovery agent is assigned (D-3).'],
+                'Assign recovery agent after (days past due)', 'An internal or external recovery agent is assigned.'],
             ['risk.stage_two_after_dpd', 'recovery', SettingType::Integer, '30', ['value' => 'required|integer|min:1|max:180'],
                 'Stage 2 starts after (days past due)', 'SLFRS 9 staging.'],
             ['risk.stage_three_after_dpd', 'recovery', SettingType::Integer, '90', ['value' => 'required|integer|min:1|max:365'],

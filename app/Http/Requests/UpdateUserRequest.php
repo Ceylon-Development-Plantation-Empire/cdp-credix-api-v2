@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Enums\IdType;
 use App\Http\Requests\Concerns\FormatsValidationErrors;
 use App\Models\User;
 use App\Rules\UniqueEmployeeIdNumber;
+use App\Rules\ValidIdNumber;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Validation\Rule;
@@ -49,7 +51,7 @@ class UpdateUserRequest extends FormRequest
 
             /* Staff: the embedded employee record */
             'employee_code' => ['sometimes', 'string', 'max:30', Rule::unique('employees', 'employee_code')->ignore($employeeId)],
-            'id_number' => ['sometimes', 'string', 'max:30', new UniqueEmployeeIdNumber($employeeId)],
+            'id_number' => ['sometimes', 'string', 'max:30', new UniqueEmployeeIdNumber($employeeId), new ValidIdNumber(IdType::Nic)],
             'branch_id' => ['nullable', 'exists:branches,id'],
             'zonal_id' => ['nullable', 'exists:org_units,id,unit_type,zone'],
             'region_id' => ['nullable', 'exists:org_units,id,unit_type,region'],

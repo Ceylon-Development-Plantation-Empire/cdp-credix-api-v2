@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Staff;
 
+use App\Enums\IdType;
 use App\Enums\LookupType;
 use App\Http\Requests\Concerns\FormatsValidationErrors;
 use App\Models\Employee;
 use App\Rules\LookupCode;
 use App\Rules\UniqueEmployeeIdNumber;
+use App\Rules\ValidIdNumber;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -34,7 +36,7 @@ class EmployeeRequest extends FormRequest
             'full_name' => [$required, 'string', 'max:150'],
             'employee_code' => [$required, 'string', 'max:30', Rule::unique('employees', 'employee_code')->ignore($id)],
             'id_type' => ['sometimes', 'string', 'max:20'],
-            'id_number' => [$required, 'string', 'max:30', new UniqueEmployeeIdNumber($id)],
+            'id_number' => [$required, 'string', 'max:30', new UniqueEmployeeIdNumber($id), new ValidIdNumber(IdType::Nic)],
             'date_of_birth' => ['sometimes', 'date_format:Y-m-d', 'before:today'],
             'email' => [$required, 'email:rfc', 'max:150'],
             'phone_primary' => ['sometimes', 'string', 'max:20'],
