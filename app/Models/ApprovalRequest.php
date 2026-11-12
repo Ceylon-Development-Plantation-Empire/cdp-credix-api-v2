@@ -56,10 +56,10 @@ class ApprovalRequest extends Model
     protected static function booted(): void
     {
         static::addGlobalScope('branch', function (Builder $query) {
-            $branchId = BranchAccess::restrictedBranchId();
+            $branchIds = BranchAccess::restrictedBranchIds();
 
-            if ($branchId !== null) {
-                $query->where(fn (Builder $q) => $q->where('approval_requests.branch_id', $branchId)->orWhereNull('approval_requests.branch_id'));
+            if ($branchIds !== null) {
+                $query->where(fn (Builder $q) => $q->whereIn('approval_requests.branch_id', $branchIds)->orWhereNull('approval_requests.branch_id'));
             }
         });
     }

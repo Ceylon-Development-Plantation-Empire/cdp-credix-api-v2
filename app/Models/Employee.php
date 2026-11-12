@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Collection;
@@ -222,6 +223,39 @@ class Employee extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    /**
+     * Secondary branches this employee has access to.
+     *
+     * @return BelongsToMany<Branch, $this>
+     */
+    public function secondaryBranches(): BelongsToMany
+    {
+        return $this->belongsToMany(Branch::class, 'employee_branches');
+    }
+
+    /**
+     * All branch IDs this employee can access (primary + secondary branches).
+     *
+     * @return list<int>
+     */
+    public function allAccessibleBranchIds(): array
+    {
+        $ids = [];
+        if ($this->branch_id !== null) {
+            $ids[] = (int) $this->branch_id;
+        }
+
+        $secondaryIds = $this->relationLoaded('secondaryBranches')
+            ? $this->secondaryBranches->pluck('id')->all()
+            : $this->secondaryBranches()->pluck('branches.id')->all();
+
+        foreach ($secondaryIds as $secId) {
+            $ids[] = (int) $secId;
+        }
+
+        return array_values(array_unique(array_filter($ids)));
     }
 
     /**

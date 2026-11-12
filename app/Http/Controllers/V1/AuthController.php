@@ -121,6 +121,8 @@ class AuthController extends Controller
                 'user' => $this->withRolesAndPermissions($user),
                 // The branch of the user's employee record: the default branch for new records.
                 'branch' => $user->employee?->branch?->only(['id', 'name', 'code']),
+                'secondary_branches' => $user->employee?->secondaryBranches?->map->only(['id', 'name', 'code']) ?? [],
+                'accessible_branch_ids' => \App\Support\BranchAccess::restrictedBranchIds($user),
                 // Additive (guide v2.1): true when an administrator set the password.
                 'must_change_password' => $user->must_change_password,
             ],

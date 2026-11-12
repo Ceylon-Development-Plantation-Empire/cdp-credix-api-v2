@@ -53,6 +53,8 @@ class UpdateUserRequest extends FormRequest
             'employee_code' => ['sometimes', 'string', 'max:30', Rule::unique('employees', 'employee_code')->ignore($employeeId)],
             'id_number' => ['sometimes', 'string', 'max:30', new UniqueEmployeeIdNumber($employeeId), new ValidIdNumber(IdType::Nic)],
             'branch_id' => ['nullable', 'exists:branches,id'],
+            'secondary_branch_ids' => ['sometimes', 'nullable', 'array'],
+            'secondary_branch_ids.*' => ['integer', 'exists:branches,id'],
             'zonal_id' => ['nullable', 'exists:org_units,id,unit_type,zone'],
             'region_id' => ['nullable', 'exists:org_units,id,unit_type,region'],
             'province_id' => ['nullable', 'exists:org_units,id,unit_type,province'],

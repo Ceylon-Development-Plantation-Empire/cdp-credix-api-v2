@@ -66,6 +66,13 @@ class LoanController extends Controller implements HasMiddleware
         try {
             $query = Loan::with(['customer', 'borrowerGroup', 'product', 'branch'])->topLevel()->latest('id');
 
+            // Cross-branch loan lookup for collecting repayments
+            if ($request->input('purpose') === 'repayment') {
+                if ($request->user()?->can('Payment Create')) {
+                    $query->withoutGlobalScope('branch')->whereIn('status', ['active', 'in_arrears']);
+                }
+            }
+
             // The deleted applications, for whoever may restore them.
             if ($request->boolean('only_deleted')) {
                 if (! $request->user()->can('Loan Restore')) {
@@ -152,7 +159,13 @@ class LoanController extends Controller implements HasMiddleware
     public function show(string $publicId)
     {
         try {
-            $loan = Loan::where('public_id', $publicId)->first();
+            $query = Loan::query();
+
+            if (request('purpose') === 'repayment' && request()->user()?->can('Payment Create')) {
+                $query->withoutGlobalScope('branch');
+            }
+
+            $loan = $query->where('public_id', $publicId)->first();
 
             if (! $loan) {
                 return $this->notFound('Loan not found');
@@ -363,7 +376,12 @@ class LoanController extends Controller implements HasMiddleware
             $request->validate(['version' => ['nullable', 'string', 'regex:/^(current|all|\d+)$/']]);
             $version = (string) $request->query('version', 'current');
 
-            $loan = Loan::where('public_id', $publicId)->first();
+            $query = Loan::query();
+            if ($request->input('purpose') === 'repayment' && ($request->user()?->can('Payment Create') || $request->user()?->can('Payment Index'))) {
+                $query->withoutGlobalScope('branch');
+            }
+
+            $loan = $query->where('public_id', $publicId)->first();
 
             if (! $loan) {
                 return $this->notFound('Loan not found');

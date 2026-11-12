@@ -48,8 +48,14 @@ class PaymentController extends Controller implements HasMiddleware
     public function index(Request $request)
     {
         try {
+            $user = $request->user();
             $query = LoanTransaction::with(['loan.customer', 'payer', 'reversal', 'allocations.installment'])
-                ->whereHas('loan')
+                ->where(function ($q) use ($user) {
+                    $q->whereHas('loan');
+                    if ($user) {
+                        $q->orWhere('posted_by', $user->id);
+                    }
+                })
                 ->whereIn('type', [TransactionType::Repayment->value, TransactionType::EarlySettlement->value, TransactionType::Reversal->value])
                 ->latest('id');
 
@@ -87,7 +93,7 @@ class PaymentController extends Controller implements HasMiddleware
     {
         try {
             $data = $request->validated();
-            $loan = Loan::where('public_id', $data['loan_public_id'])->first();
+            $loan = Loan::withoutGlobalScope('branch')->where('public_id', $data['loan_public_id'])->first();
 
             if (! $loan) {
                 return $this->notFound('Loan not found');
@@ -194,6 +200,14 @@ class PaymentController extends Controller implements HasMiddleware
 
     protected function find(string $publicId): ?LoanTransaction
     {
-        return LoanTransaction::where('public_id', $publicId)->whereHas('loan')->first();
+        $user = auth('api')->user();
+
+        return LoanTransaction::where('public_id', $publicId)
+            ->where(function ($q) use ($user) {
+                $q->whereHas('loan');
+                if ($user) {
+                    $q->orWhere('posted_by', $user->id);
+                }
+            })->first();
     }
 }

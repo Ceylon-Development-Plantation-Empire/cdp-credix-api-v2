@@ -50,6 +50,8 @@ class CreateUserRequest extends FormRequest
             'employee_code' => ['required_if:user_type,staff', 'nullable', 'string', 'max:30', 'unique:employees,employee_code'],
             'id_number' => ['required_if:user_type,staff', 'nullable', 'string', 'max:30', new UniqueEmployeeIdNumber, new ValidIdNumber(IdType::Nic)],
             'branch_id' => ['required_if:user_type,staff', 'nullable', 'exists:branches,id'],
+            'secondary_branch_ids' => ['sometimes', 'nullable', 'array'],
+            'secondary_branch_ids.*' => ['integer', 'exists:branches,id'],
             'zonal_id' => ['nullable', 'exists:org_units,id,unit_type,zone'],
             'region_id' => ['nullable', 'exists:org_units,id,unit_type,region'],
             'province_id' => ['nullable', 'exists:org_units,id,unit_type,province'],

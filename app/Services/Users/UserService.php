@@ -33,7 +33,7 @@ class UserService
      * Relations loaded for the user screens (the starter's response shape, see User::toArray()).
      */
     public const SCREEN_RELATIONS = [
-        'employee.branch', 'employee.zonal', 'employee.region', 'employee.province',
+        'employee.branch', 'employee.secondaryBranches', 'employee.zonal', 'employee.region', 'employee.province',
         'employee.reportingManager.user', 'employee.designation', 'roles', 'permissions',
     ];
 
@@ -51,7 +51,11 @@ class UserService
             $employeeId = null;
 
             if ($data['user_type'] === UserType::Staff->value) {
-                $employeeId = Employee::create($this->employeeAttributes($data, null))->id;
+                $employee = Employee::create($this->employeeAttributes($data, null));
+                $employeeId = $employee->id;
+                if (! empty($data['secondary_branch_ids'])) {
+                    $employee->secondaryBranches()->sync($data['secondary_branch_ids']);
+                }
             }
 
             $user = User::create([
@@ -96,9 +100,16 @@ class UserService
 
                 if ($user->employee) {
                     $user->employee->update($attributes);
+                    if (array_key_exists('secondary_branch_ids', $data)) {
+                        $user->employee->secondaryBranches()->sync($data['secondary_branch_ids'] ?? []);
+                    }
                 } else {
                     // An admin turned into staff gets an employee record.
-                    $user->employee_id = Employee::create($attributes + $this->employeeDefaults($data, $user))->id;
+                    $employee = Employee::create($attributes + $this->employeeDefaults($data, $user));
+                    $user->employee_id = $employee->id;
+                    if (! empty($data['secondary_branch_ids'])) {
+                        $employee->secondaryBranches()->sync($data['secondary_branch_ids']);
+                    }
                 }
             } elseif ($user->employee_id !== null) {
                 // DECISION: staff turned admin keeps the employee record (history), only unlinked.

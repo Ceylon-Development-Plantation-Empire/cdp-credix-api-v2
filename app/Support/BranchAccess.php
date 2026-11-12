@@ -11,8 +11,8 @@ use App\Models\User;
  * Which branch's data a user may see.
  *
  * - admin users and users with the "Branch Data All" permission (head office) see every branch;
- * - every other back-office user sees only the branch of their employee record;
- * - a staff user without an employee branch sees nothing (safe default, never "everything");
+ * - back-office staff see the branches they are assigned to (primary branch + secondary branches);
+ * - a staff user without an assigned branch sees nothing (safe default, never "everything");
  * - console commands and queue jobs (no logged-in user) are not restricted.
  */
 final class BranchAccess
@@ -20,9 +20,12 @@ final class BranchAccess
     public const ALL_BRANCHES_PERMISSION = 'Branch Data All';
 
     /**
-     * Null = no restriction. Otherwise the only branch id the user may access (0 = none).
+     * Null = no restriction (admin / head office permission).
+     * Otherwise the list of branch IDs the user may access (empty array = none).
+     *
+     * @return list<int>|null
      */
-    public static function restrictedBranchId(?User $user = null): ?int
+    public static function restrictedBranchIds(?User $user = null): ?array
     {
         $user ??= auth('api')->user();
 
@@ -34,13 +37,40 @@ final class BranchAccess
             return null;
         }
 
-        return (int) ($user->employee?->branch_id ?? 0);
+        $employee = $user->employee;
+        if (! $employee) {
+            return [];
+        }
+
+        return $employee->allAccessibleBranchIds();
+    }
+
+    /**
+     * Backward-compatible helper: Null = no restriction. Otherwise the primary branch id or 0.
+     */
+    public static function restrictedBranchId(?User $user = null): ?int
+    {
+        $restricted = self::restrictedBranchIds($user);
+
+        if ($restricted === null) {
+            return null;
+        }
+
+        return $restricted[0] ?? 0;
     }
 
     public static function canAccessBranch(?int $branchId, ?User $user = null): bool
     {
-        $restricted = self::restrictedBranchId($user);
+        $restricted = self::restrictedBranchIds($user);
 
-        return $restricted === null || $restricted === $branchId;
+        if ($restricted === null) {
+            return true;
+        }
+
+        if ($branchId === null) {
+            return false;
+        }
+
+        return in_array($branchId, $restricted, true);
     }
 }
