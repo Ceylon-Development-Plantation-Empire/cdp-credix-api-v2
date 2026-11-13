@@ -64,7 +64,13 @@ class UserController extends Controller implements HasMiddleware
             })
             ->when($request->filled('user_type'), fn (Builder $q) => $q->where('user_type', $request->input('user_type')))
             ->when($request->filled('role'), fn (Builder $q) => $q->whereHas('roles', fn ($r) => $r->where('name', $request->input('role'))))
-            ->when($request->filled('branch_id'), fn (Builder $q) => $q->whereHas('employee', fn ($e) => $e->where('branch_id', $request->input('branch_id'))))
+            ->when($request->filled('branch_id'), function (Builder $q) use ($request) {
+                $branchId = (int) $request->input('branch_id');
+                $q->whereHas('employee', function (Builder $e) use ($branchId) {
+                    $e->where('branch_id', $branchId)
+                        ->orWhereHas('secondaryBranches', fn (Builder $sb) => $sb->where('branches.id', $branchId));
+                });
+            })
             ->when($request->has('is_active'), fn (Builder $q) => $q->where('is_active', $request->boolean('is_active')));
 
         $users = $query->paginate(min((int) $request->get('per_page', 15), 100));
