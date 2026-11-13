@@ -53,7 +53,10 @@ class PaymentController extends Controller implements HasMiddleware
                 ->where(function ($q) use ($user) {
                     $q->whereHas('loan');
                     if ($user) {
-                        $q->orWhere('posted_by', $user->id);
+                        $q->orWhere(function ($sub) use ($user) {
+                            $sub->where('posted_by', $user->id)
+                                ->whereHas('loan', fn ($loanQ) => $loanQ->withoutGlobalScope('branch'));
+                        });
                     }
                 })
                 ->whereIn('type', [TransactionType::Repayment->value, TransactionType::EarlySettlement->value, TransactionType::Reversal->value])
@@ -206,7 +209,10 @@ class PaymentController extends Controller implements HasMiddleware
             ->where(function ($q) use ($user) {
                 $q->whereHas('loan');
                 if ($user) {
-                    $q->orWhere('posted_by', $user->id);
+                    $q->orWhere(function ($sub) use ($user) {
+                        $sub->where('posted_by', $user->id)
+                            ->whereHas('loan', fn ($loanQ) => $loanQ->withoutGlobalScope('branch'));
+                    });
                 }
             })->first();
     }
